@@ -1,0 +1,47 @@
+{
+  "format": "cleartv-theme",
+  "version": 1,
+  "id": "kids",
+  "name": "Big and Bright",
+  "author": "ClearTV examples",
+  "colors": {
+    "background": "#0E2A47",
+    "backgroundDeep": "#0A1F35",
+    "panel": "#163B63",
+    "surface": "#1F5288",
+    "line": "#2E6BAA",
+    "text": "#FFFFFF",
+    "textMuted": "#DCEBFF",
+    "textSoft": "#A9C8EE",
+    "accent": "#FFC93C",
+    "good": "#6BE38F",
+    "bad": "#FF8080",
+    "warn": "#FFC93C"
+  },
+  "font": {
+    "display": "sans-medium",
+    "body": "sans-medium",
+    "scale": 1.25
+  },
+  "shape": {
+    "radius": 24,
+    "focusRing": 6,
+    "focusScale": 1.08,
+    "cardOpacity": 100
+  },
+  "tiles": {
+    "size": 1.3
+  },
+  "layout": {
+    "engine": "classic",
+    "rowSpacing": 24,
+    "header": "minimal",
+    "backdrop": "gradient",
+    "servicesStyle": "hero",
+    "homeRows": [
+      "services",
+      "continue"
+    ],
+    "serviceAccents": true
+  }
+}

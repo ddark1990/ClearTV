@@ -1,0 +1,16 @@
+! ClearTV's own rules, compiled after the downloaded and bundled filter lists (ABP/uBO syntax).
+! Content must never be blocked: ad-supported titles (YouTube "Free with ads" movies, Pluto, Tubi) are content,
+! not ads. Only the ad requests themselves are blocked; the lists' scriptlets still strip ad slots from responses.
+!
+! YouTube: InnerTube content endpoints (home, Movies & TV storefront, search, guide, watch page, player)
+@@||www.youtube.com/youtubei/v1/browse?
+@@||www.youtube.com/youtubei/v1/next?
+@@||www.youtube.com/youtubei/v1/search?
+@@||www.youtube.com/youtubei/v1/guide?
+@@||www.youtube.com/youtubei/v1/player?
+@@||www.youtube.com/youtubei/v1/reel/reel_item_watch?
+! YouTube: thumbnails, channel art and the video streams
+@@||i.ytimg.com^$image
+@@||yt3.ggpht.com^$image
+@@||yt3.googleusercontent.com^$image
+@@||googlevideo.com/videoplayback?

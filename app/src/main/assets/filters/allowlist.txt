@@ -1,0 +1,56 @@
+# Domains that break Fire TV, Prime Video, Freevee, Pluto TV or YouTube when blocked. ClearTV's domain set never blocks them.
+# "suffix" = the domain and all its subdomains are exempt; "exact" = only that host.
+# Exception kept blocked: *.videorolls.row.aiv-cdn.net (Prime Video pre-roll ad hosts, per HaGeZi native.amazon). Allowlist them if Prime playback breaks.
+# Format: domain  # mode | services | evidence
+s.youtube.com  # exact | YouTube | Pi-hole "Commonly Whitelisted Domains" wiki (YouTube history) https://discourse.pi-hole.net/t/commonly-whitelisted-domains/212 ; anudeepND/whitelist
+video-stats.l.google.com  # exact | YouTube | Pi-hole Commonly Whitelisted Domains (YouTube history); anudeepND/whitelist
+www.googleapis.com  # exact | YouTube | Pi-hole Commonly Whitelisted Domains (YouTube app for iOS); anudeepND/whitelist
+youtubei.googleapis.com  # exact | YouTube | Pi-hole Commonly Whitelisted Domains (YouTube app for iOS); StreamNoAds whitelist-streaming
+oauthaccountmanager.googleapis.com  # exact | YouTube | Pi-hole Commonly Whitelisted Domains (YouTube app for iOS)
+redirector.gvt1.com  # exact | YouTube/Android TV | Pi-hole Commonly Whitelisted Domains (Android TV)
+i.ytimg.com  # exact | YouTube | anudeepND/whitelist (whitelist.txt)
+i1.ytimg.com  # exact | YouTube | anudeepND/whitelist (whitelist.txt)
+s.ytimg.com  # exact | YouTube | anudeepND/whitelist (whitelist.txt)
+s2.youtube.com  # exact | YouTube | anudeepND/whitelist (whitelist.txt)
+manifest.googlevideo.com  # exact | YouTube | anudeepND/whitelist (whitelist.txt)
+redirector.googlevideo.com  # exact | YouTube | anudeepND/whitelist (whitelist.txt) + optional-list (Roku CW/NBC)
+youtube-nocookie.com  # exact | YouTube embeds | anudeepND/whitelist (whitelist.txt)
+www.youtube-nocookie.com  # exact | YouTube embeds | anudeepND/whitelist; StreamNoAds whitelist-streaming
+googlevideo.com  # suffix | YouTube video CDN | StreamNoAds whitelist-streaming (@@||googlevideo.com^) - YouTube video segments (and its ads) are served from here
+aiv-delivery.net  # suffix | Prime Video / Freevee | r/pihole "Amazon Prime Video suddenly starting with issues" (user had to whitelist (\.|^)aiv-delivery\.net$); HaGeZi native.amazon blocks api.*.aiv-delivery.net
+aiv-cdn.net  # suffix | Prime Video / Freevee | r/pihole same thread (whitelist (\.|^)aiv-cdn\.net$) - Prime Video CDN (EXCEPT *.videorolls.row.aiv-cdn.net, kept blocked, see notes)
+atv-ps.amazon.com  # exact | Prime Video | StreamNoAds whitelist-streaming; commented out (not blocked) in dashingdon list
+primevideo.com  # exact | Prime Video | StreamNoAds whitelist-streaming
+unagi.amazon.com  # exact | Fire TV / Prime Video | StreamNoAds whitelist-streaming
+unagi-na.amazon.com  # exact | Fire TV / Kindle | anudeepND optional-list (Amazon Kindle); Perflyst AmazonFireTV leaves unagi-eu commented out; blocking breaks Fire TV home-screen content rows
+mas-ext.amazon.com  # exact | Fire TV Appstore | Perflyst AmazonFireTV.txt: "required for apps to be installed" (left commented out)
+amazonadsi-a.akamaihd.net  # exact | Fire TV Appstore | Perflyst AmazonFireTV.txt: "required for app installation / updates" (left commented out)
+softwareupdates.amazon.com  # exact | Fire TV updates | Perflyst AmazonFireTV.txt "# updates" (left commented out)
+ftv-smp.ntp-fireos.com  # exact | Fire TV time sync | Perflyst AmazonFireTV.txt "# ntp / time" (left commented out)
+api.amazon.com  # exact | Fire TV / Amazon login | Perflyst AmazonFireTV.txt "API connections" (left commented out)
+device-messaging-na.amazon.com  # exact | Fire TV / Kindle | anudeepND optional-list (Amazon Kindle) - NOTE Perflyst blocks it; conflicting advice
+todo-ta-g7g.amazon.com  # exact | Fire TV / Kindle | anudeepND optional-list (Amazon Kindle); Perflyst leaves it commented out
+det-ta-g7g.amazon.com  # exact | Fire TV / Kindle | anudeepND optional-list (Amazon Kindle)
+cognito-identity.us-east-1.amazonaws.com  # exact | Amazon devices | anudeepND optional-list (Amazon Kindle)
+time.samsungcloudsolution.com  # exact | Prime Video on Samsung TV | anudeepND optional-list ("Samsung TV's Amazon Prime Video app")
+api.pluto.tv  # exact | Pluto TV | anudeepND optional-list (Pluto.tv); StreamNoAds whitelist-streaming
+boot.pluto.tv  # exact | Pluto TV | StreamNoAds whitelist-streaming
+plutotv.net  # suffix | Pluto TV | StreamNoAds whitelist-streaming
+images.pluto.tv  # exact | Pluto TV | anudeepND optional-list (Pluto.tv)
+stitcher.pluto.tv  # exact | Pluto TV | anudeepND optional-list (Pluto.tv) - this is Pluto's server-side ad STITCHER; it also serves the program stream
+siloh.pluto.tv  # exact | Pluto TV | anudeepND optional-list (Pluto.tv)
+silo.pluto.tv  # exact | Pluto TV | anudeepND optional-list (Pluto.tv)
+cdn-mobile.api.pluto.tv  # exact | Pluto TV | anudeepND optional-list (Pluto.tv)
+players.pluto.tv  # exact | Pluto TV | anudeepND optional-list (Pluto.tv)
+
+# Domains actually found in the downloaded blocklists and removed by this allowlist:
+#   api.eu-west-1.aiv-delivery.net
+#   api.us-east-1.aiv-delivery.net
+#   api.us-west-2.aiv-delivery.net
+#   det-ta-g7g.amazon.com
+#   device-messaging-na.amazon.com
+#   r2.sn-gxuo03g-3c2l.googlevideo.com
+#   r5.sn-q4flrner.googlevideo.com
+#   s2.youtube.com
+#   unagi-na.amazon.com
+#   unagi.amazon.com

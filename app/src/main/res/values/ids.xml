@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- view tags used by the composed (theme v2) home -->
+    <item name="home_label" type="id" />
+    <item name="home_sub" type="id" />
+    <item name="home_pic" type="id" />
+    <item name="home_art" type="id" />
+    <item name="home_progress" type="id" />
+    <item name="home_shine" type="id" />
+    <item name="home_focus_label" type="id" />
+    <item name="home_shadow" type="id" />
+    <item name="home_text_item" type="id" />
+</resources>

@@ -1,0 +1,138 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Single source of truth for the version: repo-root VERSION (MAJOR.MINOR.PATCH).
+def versionText = rootProject.file('VERSION').text.trim()
+def parts = versionText.tokenize('.').collect { it as int }
+// versionCode = version * 1000 + build number (repo-root BUILD, raised by tools/build_release.sh), so every
+// installed build is newer than the last and launchers re-read the icon, banner and label
+def buildFile = rootProject.file('BUILD')
+def buildNumber = buildFile.exists() ? (buildFile.text.trim() as int) : 0
+def versionCodeFromName = (parts[0] * 10000 + parts[1] * 100 + parts[2]) * 1000 + buildNumber
+
+// Release signing, first match wins (nothing secret is committed; see signing/README.md):
+//  1. environment: CLEARTV_KEYSTORE (path), CLEARTV_KEYSTORE_PASSWORD, CLEARTV_KEY_ALIAS, CLEARTV_KEY_PASSWORD (CI)
+//  2. local.properties: cleartv.keystore, cleartv.keystorePassword, cleartv.keyAlias, cleartv.keyPassword
+//  3. signing/signing.properties: storeFile, storePassword, keyAlias, keyPassword (the maintainer's box)
+// With none of them, release builds are signed with the Android debug key so a fresh clone still builds.
+def localProps = new Properties()
+def localFile = rootProject.file('local.properties')
+if (localFile.exists()) localFile.withInputStream { localProps.load(it) }
+def signingProps = new Properties()
+def signingFile = rootProject.file('signing/signing.properties')
+if (signingFile.exists()) signingFile.withInputStream { signingProps.load(it) }
+def relKey = null
+if (System.getenv('CLEARTV_KEYSTORE')) {
+    relKey = [file: file(System.getenv('CLEARTV_KEYSTORE')), storePassword: System.getenv('CLEARTV_KEYSTORE_PASSWORD'),
+               alias: System.getenv('CLEARTV_KEY_ALIAS'), keyPassword: System.getenv('CLEARTV_KEY_PASSWORD')]
+} else if (localProps['cleartv.keystore']) {
+    relKey = [file: rootProject.file(localProps['cleartv.keystore']), storePassword: localProps['cleartv.keystorePassword'],
+               alias: localProps['cleartv.keyAlias'], keyPassword: localProps['cleartv.keyPassword']]
+} else if (signingFile.exists()) {
+    relKey = [file: rootProject.file(signingProps['storeFile']), storePassword: signingProps['storePassword'],
+               alias: signingProps['keyAlias'], keyPassword: signingProps['keyPassword']]
+}
+if (relKey != null && !relKey.file.exists()) throw new GradleException("Release keystore not found: ${relKey.file}")
+
+def prop = { String k, String d -> (project.findProperty(k) ?: localProps[k] ?: d) as String }
+// Updates and the theme store (docs/UPDATES.md). Build-time constants shown in Settings; forks point them at their
+// own public repo: -Pcleartv.updateUrl=... -Pcleartv.storeUrl=... (or local.properties). allowLocalHttp is only for
+// testing against a mock server through adb reverse; never set it for a build you hand out.
+def updateUrl = prop('cleartv.updateUrl', 'https://api.github.com/repos/ddark1990/ClearTV/releases/latest')
+def storeUrl = prop('cleartv.storeUrl', 'https://raw.githubusercontent.com/ddark1990/ClearTV/main/themes/index.json')
+def allowLocalHttp = prop('cleartv.allowLocalHttp', 'false') == 'true'
+
+android {
+    namespace 'com.goomero.cleartv'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.goomero.cleartv'
+        minSdk 22
+        targetSdk 34
+        versionCode versionCodeFromName
+        versionName versionText
+        // UI strings are English only; drop translated resources pulled in by libraries
+        resourceConfigurations += ['en']
+        buildConfigField 'String', 'UPDATE_URL', "\"${updateUrl}\""
+        buildConfigField 'String', 'STORE_URL', "\"${storeUrl}\""
+        buildConfigField 'boolean', 'ALLOW_LOCAL_HTTP', "${allowLocalHttp}"
+    }
+
+    signingConfigs {
+        release {
+            if (relKey != null) {
+                storeFile relKey.file
+                storePassword relKey.storePassword
+                keyAlias relKey.alias
+                keyPassword relKey.keyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig relKey != null ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    androidResources {
+        // engine.bin is memory-mapped straight from the APK (FilterManager.mapAsset), which needs it stored
+        // uncompressed. That is also the smallest installed footprint: no extracted copy in the data dir.
+        noCompress 'bin'
+    }
+
+    packaging {
+        resources {
+            // library metadata that is not needed at run time
+            excludes += ['META-INF/*.version', 'META-INF/**/LICENSE*', 'META-INF/**/NOTICE*', 'META-INF/*.kotlin_module',
+                         'kotlin/**', 'DebugProbesKt.bin', '**/*.proto']
+        }
+    }
+
+    dependenciesInfo {
+        // no dependency metadata block in the APK signature (only used by Play)
+        includeInApk false
+        includeInBundle false
+    }
+
+    lint {
+        abortOnError true
+        checkReleaseBuilds true
+        disable 'ExpiredTargetSdkVersion', 'GradleDependency', 'SetJavaScriptEnabled', 'ClickableViewAccessibility',
+                'SetTextI18n', 'JavascriptInterface', 'AddJavascriptInterface'
+    }
+}
+
+// The theme JSON Schema ships in the APK (served by the phone page's api/schema) from its one source, docs/.
+def themeAssets = layout.buildDirectory.dir('generated/themeAssets')
+tasks.register('copyThemeSchema', Copy) {
+    from rootProject.file('docs/theme.schema.json')
+    into themeAssets.map { it.dir('themes') }
+}
+android.sourceSets.main.assets.srcDir(themeAssets)
+tasks.named('preBuild') { dependsOn 'copyThemeSchema' }
+
+dependencies {
+    // Only for WebViewCompat.addDocumentStartJavaScript (content.js in every frame before page scripts), which the
+    // framework WebView API does not expose. R8 keeps just the classes that call uses; no AppCompat or Material.
+    implementation 'androidx.webkit:webkit:1.12.1'
+    // Native Pluto TV viewer (pluto/): ExoPlayer with the HLS module only. No -ui (own overlay), -dash, -okhttp
+    // or -session; HlsMediaSource is passed explicitly so DefaultMediaSourceFactory and other formats are stripped.
+    // 1.4.1 is the newest Media3 that builds against compileSdk 34 / AGP 8.5 (1.5+ needs 35, 1.11 needs 36).
+    implementation 'androidx.media3:media3-exoplayer:1.4.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.4.1'
+}

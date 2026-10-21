@@ -1,0 +1,246 @@
+#!/usr/bin/env python3
+"""Manual developer check of ClearTV's service endpoints, from a computer (not scheduled anywhere; the app runs its
+own background health check at most every 12 h).
+
+Uses the config built into the app (app/src/main/assets/config.json) and tries
+each service's browse, search, detail, stream manifest and sign-in code endpoints the way the adapters call them.
+Prints a JSON report and exits 1 when anything failed.
+
+  tools/healthcheck                 # all services
+  tools/healthcheck tubi pluto      # some of them
+"""
+import base64
+import gzip
+import hashlib
+import hmac
+import json
+import secrets
+import sys
+import time
+import urllib.parse
+import urllib.request
+import uuid
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+BUNDLED = ROOT / "app" / "src" / "main" / "assets" / "config.json"
+DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+TV_UA = ("Mozilla/5.0 (Linux armeabi-v7a; Android 9) Cobalt/25.lts.30.1034943-gold (unlike Gecko) v8/8.8.278.17-jit "
+         "gles Starboard/15, Amazon_ATV_mediatek8695_2019/PS7633 (Amazon, AFTSSS, Wireless) com.amazon.firetv.youtube/25.lts.30")
+
+
+NOTES = []
+
+
+class Fail(Exception):
+    pass
+
+
+def http(url, data=None, headers=None, method=None, raw=False):
+    try:
+        return _http(url, data, headers, method, raw)
+    except Fail as e:
+        if str(e) not in ("HTTP 503", "HTTP 429"):
+            raise
+        time.sleep(4)  # throttled (Amazon answers bursts with 503); one more try
+        return _http(url, data, headers, method, raw)
+
+
+def _http(url, data=None, headers=None, method=None, raw=False):
+    h = {"User-Agent": DESKTOP_UA, "Accept-Encoding": "gzip"}
+    h.update(headers or {})
+    if isinstance(data, (dict, list)):
+        data = json.dumps(data).encode()
+        h.setdefault("Content-Type", "application/json")
+    req = urllib.request.Request(url, data=data, headers=h, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            b = r.read()
+            if r.headers.get("Content-Encoding") == "gzip":
+                b = gzip.decompress(b)
+    except urllib.error.HTTPError as e:
+        raise Fail(f"HTTP {e.code}")
+    except (urllib.error.URLError, TimeoutError) as e:
+        raise Fail(str(getattr(e, "reason", e)))
+    return b if raw else b.decode("utf-8", "replace")
+
+
+def load_config():
+    return json.loads(BUNDLED.read_text()), "bundled"
+
+
+def deep_find(o, key):
+    if isinstance(o, dict):
+        if key in o:
+            yield o[key]
+        for v in o.values():
+            yield from deep_find(v, key)
+    elif isinstance(o, list):
+        for v in o:
+            yield from deep_find(v, key)
+
+
+# --------------------------------------------------------------------------------------------- YouTube
+
+def youtube(cfg, step):
+    y = cfg["youtube"]
+    ctx = {"client": {"clientName": y["tvClientName"], "clientVersion": y["tvClientVersion"], "hl": "en", "gl": "US"}}
+    yh = {"User-Agent": TV_UA, "Origin": "https://www.youtube.com", "Referer": "https://www.youtube.com/tv"}
+    probe = y.get("probe", {})
+    step("browse")
+    o = json.loads(http(y["api"] + "browse?prettyPrint=false", {"context": ctx, "browseId": probe.get("browse", "FEwhat_to_watch")}, yh))
+    if not any(True for _ in deep_find(o, "shelfRenderer")):
+        raise Fail("no shelves")
+    step("search")
+    o = json.loads(http(y["api"] + "search?prettyPrint=false", {"context": ctx, "query": probe.get("search", "news")}, yh))
+    if not any(True for _ in deep_find(o, "videoId")):
+        raise Fail("no results")
+    step("detail")
+    vid = probe.get("video", "jNQXAC9e7gk")
+    o = json.loads(http(y["api"] + "next?prettyPrint=false", {"context": ctx, "videoId": vid}, yh))
+    if not any(True for _ in deep_find(o, "videoId")):
+        raise Fail("no watch-next data")
+    step("stream")
+    ios = {"client": {"clientName": y["iosClientName"], "clientVersion": y["iosClientVersion"], "deviceMake": "Apple",
+                      "deviceModel": "iPhone16,2", "osName": "iPhone", "osVersion": "18.3.2.22D82", "hl": "en", "gl": "US"}}
+    ua = y["iosUserAgent"].replace("{v}", y["iosClientVersion"])
+    o = json.loads(http(y["api"] + "player?prettyPrint=false", {"context": ios, "videoId": vid, "contentCheckOk": True, "racyCheckOk": True},
+                        {"User-Agent": ua, "X-Youtube-Client-Name": "5", "X-Youtube-Client-Version": y["iosClientVersion"]}))
+    st = o.get("playabilityStatus", {})
+    # the app asks the iOS client only for live streams (HLS); videos play in YouTube's embed player, so a
+    # refusal here (common from data-centre addresses) is reported but not a failure
+    if st.get("status") != "OK":
+        NOTES.append(f"youtube: iOS player said {st.get('status')}: {st.get('reason', '')}".strip())
+    # videos play in YouTube's embed player; its page must answer
+    page = http(f"https://www.youtube.com/embed/{vid}")
+    if "ytcfg" not in page:
+        raise Fail("embed page without player config")
+    step("sign-in code")
+    o = json.loads(http(y["deviceCodeUrl"], {"client_id": y["oauthClientId"], "scope": y["oauthScope"],
+                                             "device_id": str(uuid.uuid4()), "device_model": "ytlr::"}, yh))
+    if not o.get("user_code"):
+        raise Fail("no user_code")
+
+
+# ------------------------------------------------------------------------------------------------ Tubi
+
+def tubi_token(t, dev):
+    base = {"Origin": "https://tubitv.com", "Referer": "https://tubitv.com/"}
+    verifier = secrets.token_hex(16)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode()
+    key = json.loads(http(t["account"] + "/device/anonymous/signing_key",
+                          {"challenge": challenge, "version": "1.0.0", "platform": t["platform"], "device_id": dev}, base))
+    body = json.dumps({"verifier": verifier, "id": key["id"], "platform": t["platform"], "device_id": dev}, separators=(",", ":"))
+    path = "/device/anonymous/token"
+    canonical = f"POST\n{path}\n\ncontent-type:application/json\n\ncontent-type\n{hashlib.sha256(body.encode()).hexdigest()}"
+    date = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    to_sign = f"TUBI-HMAC-SHA256\n{date}\n{hashlib.sha256(canonical.encode()).hexdigest()}"
+    k = b"TUBI" + base64.b64decode(key["key"])
+    k = hmac.new(k, date[:8].encode(), hashlib.sha256).digest()
+    k = hmac.new(k, b"tubi_request", hashlib.sha256).digest()
+    sig = hmac.new(k, to_sign.encode(), hashlib.sha256).hexdigest()
+    qs = urllib.parse.urlencode({"X-Tubi-Algorithm": "TUBI-HMAC-SHA256", "X-Tubi-Date": date, "X-Tubi-Expires": "30",
+                                 "X-Tubi-SignedHeaders": "content-type", "X-Tubi-Signature": sig})
+    return json.loads(http(t["account"] + path + "?" + qs, body.encode(), {**base, "Content-Type": "application/json"}))["access_token"]
+
+
+def tubi(cfg, step):
+    t = cfg["tubi"]
+    dev = str(uuid.uuid4())
+    step("device token")
+    h = {"Origin": "https://tubitv.com", "Referer": "https://tubitv.com/", "Authorization": "Bearer " + tubi_token(t, dev)}
+    q = f"platform={t['platform']}&device_id={dev}"
+    step("browse")
+    o = json.loads(http(t["tensor"] + f"/api/v8/homescreen?{q}&limit=6&expand=1", headers=h))
+    ids = [cid for cid in (o.get("contents") or {}) if (o["contents"][cid].get("type") == "v")]
+    if not o.get("containers"):
+        raise Fail("no containers")
+    step("search")
+    o = json.loads(http(t["search"] + "/api/v3/search?search=" + urllib.parse.quote(t.get("probe", {}).get("search", "comedy")) + "&" + q, headers=h))
+    if not o:
+        raise Fail("no results")
+    if not ids:
+        ids = [c for c in (o.get("contents") or {}) if o["contents"][c].get("type") == "v"] if isinstance(o, dict) else []
+    if not ids:
+        raise Fail("no movie to try")
+    step("detail")
+    d = json.loads(http(t["content"] + f"/api/v3/content?content_id={ids[0]}&{q}", headers=h))
+    if not d.get("title"):
+        raise Fail("no title")
+    step("stream")
+    d = json.loads(http(t["content"] + f"/api/v3/content?content_id={ids[0]}&{q}&video_resources%5B%5D=hlsv3", headers=h))
+    urls = [r["manifest"]["url"] for r in d.get("video_resources", []) if "license_server" not in r and r.get("manifest", {}).get("url")]
+    if not urls:
+        raise Fail("no clear HLS resource")
+    if not http(urls[0], headers={"Origin": "https://tubitv.com", "Referer": "https://tubitv.com/"}).startswith("#EXTM3U"):
+        raise Fail("manifest is not a playlist")
+    step("sign-in code")
+    o = json.loads(http(t["account"] + "/user_device/code/generate", {"platform": t["platform"], "device_id": dev},
+                        {"Origin": "https://tubitv.com", "Referer": "https://tubitv.com/"}))
+    if not o.get("activation_code"):
+        raise Fail("no activation_code")
+
+
+# ----------------------------------------------------------------------------------------- Prime Video
+
+def prime(cfg, step):
+    p = cfg["prime"]
+    marker = p["hydrationMarker"]
+    step("browse")
+    if marker not in http(p["base"] + "/storefront/home/"):
+        raise Fail("home page without hydration data")
+    step("detail")
+    if marker not in http(p["base"] + p.get("probe", {}).get("detail", "/detail/0J1DW15U5F8I6MR5750BWMO6Y1")):
+        raise Fail("detail page without hydration data")
+    step("search")
+    if marker not in http(p["base"] + "/search/ref=atv_sr_sug?phrase=comedy"):
+        raise Fail("search page without hydration data")
+    step("sign-in page")
+    http(p["base"] + "/mystuff/watchlist/")  # what the app opens to sign in; Amazon forwards it to its sign-in page
+
+
+# --------------------------------------------------------------------------------------------- Pluto TV
+
+def pluto(cfg, step):
+    p = cfg["pluto"]
+    ph = {"Origin": "https://pluto.tv", "Referer": "https://pluto.tv/", "Accept": "application/json"}
+    step("session")
+    url = (p["boot"] + f"?appName={p['appName']}&appVersion={p['appVersion']}&deviceVersion={p['deviceVersion']}"
+           f"&deviceModel=web&deviceMake=chrome&deviceType=web&clientID={uuid.uuid4()}&clientModelNumber=1.0.0&serverSideAds=false")
+    o = json.loads(http(url, headers=ph))
+    tok, stitcher, params = o["sessionToken"], o["servers"]["stitcher"], o["stitcherParams"]
+    step("browse")
+    ch = json.loads(http(p["channels"] + "channels?channelIds=&offset=0&limit=1000&sort=number%3Aasc",
+                         headers={**ph, "Authorization": "Bearer " + tok})).get("data", [])
+    if not ch:
+        raise Fail("no channels")
+    step("stream")
+    m = http(f"{stitcher}/v2/stitch/hls/channel/{ch[0]['id']}/master.m3u8?{params}&jwt={tok}&masterJWTPassthrough=true", headers=ph)
+    if not m.startswith("#EXTM3U"):
+        raise Fail("manifest is not a playlist")
+
+
+CHECKS = {"youtube": youtube, "tubi": tubi, "prime": prime, "pluto": pluto}
+
+
+def main():
+    names = [a for a in sys.argv[1:] if not a.startswith("--")] or list(CHECKS)
+    cfg, origin = load_config()
+    report = {"config": {"version": cfg.get("version"), "origin": origin}, "checked": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+              "ok": [], "failures": []}
+    for n in names:
+        cur = {"step": "start"}
+        t0 = time.time()
+        try:
+            CHECKS[n](cfg, lambda s: cur.__setitem__("step", s))
+            report["ok"].append({"service": n, "seconds": round(time.time() - t0, 1)})
+        except (Fail, KeyError, ValueError) as e:
+            report["failures"].append({"service": n, "step": cur["step"], "error": f"{type(e).__name__ if not isinstance(e, Fail) else ''}{e}"})
+    if NOTES:
+        report["notes"] = NOTES
+    print(json.dumps(report, indent=1))
+    sys.exit(1 if report["failures"] else 0)
+
+
+if __name__ == "__main__":
+    main()

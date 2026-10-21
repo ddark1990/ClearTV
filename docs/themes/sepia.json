@@ -1,0 +1,48 @@
+{
+  "format": "cleartv-theme",
+  "version": 1,
+  "id": "sepia",
+  "name": "Sepia Paper",
+  "author": "ClearTV examples",
+  "colors": {
+    "background": "#F4ECD8",
+    "backgroundDeep": "#E6D9BC",
+    "panel": "#FBF6EA",
+    "surface": "#EADFC6",
+    "line": "#CDBE9C",
+    "text": "#2B2116",
+    "textMuted": "#54442F",
+    "textSoft": "#76654C",
+    "accent": "#8B3A1A",
+    "good": "#3F6B2A",
+    "bad": "#A3271F",
+    "warn": "#8A5A00"
+  },
+  "font": {
+    "display": "serif",
+    "body": "serif",
+    "scale": 1.05
+  },
+  "shape": {
+    "radius": 8,
+    "focusRing": 3,
+    "focusScale": 1.04,
+    "cardOpacity": 95
+  },
+  "tiles": {
+    "size": 1
+  },
+  "layout": {
+    "engine": "rail",
+    "rowSpacing": 20,
+    "header": "full",
+    "backdrop": "plain",
+    "servicesStyle": "cards",
+    "homeRows": [
+      "services",
+      "continue",
+      "watchlist"
+    ],
+    "serviceAccents": true
+  }
+}

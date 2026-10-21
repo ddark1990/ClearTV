@@ -1,0 +1,170 @@
+{
+  "format": "cleartv-theme",
+  "version": 2,
+  "id": "topshelf",
+  "name": "Top Shelf",
+  "colors": {
+    "background": "#1C1C1E",
+    "backgroundDeep": "#111113",
+    "panel": "#2C2C2E",
+    "surface": "#3A3A3C",
+    "line": "#48484A",
+    "text": "#FFFFFF",
+    "textMuted": "#C7C7CC",
+    "textSoft": "#98989F",
+    "accent": "#FFFFFF",
+    "good": "#30D158",
+    "bad": "#FF6961",
+    "warn": "#FFD60A"
+  },
+  "font": {
+    "display": "sans-medium",
+    "body": "sans",
+    "scale": 1.05
+  },
+  "shape": {
+    "radius": 16,
+    "focusRing": 2,
+    "focusScale": 1.1,
+    "cardOpacity": 72
+  },
+  "tiles": {
+    "size": 1
+  },
+  "layout": {
+    "rowSpacing": 28,
+    "header": "compact",
+    "backdrop": "gradient",
+    "homeRows": [
+      "services",
+      "continue",
+      "watchlist"
+    ],
+    "serviceAccents": true
+  },
+  "screens": {
+    "service": {
+      "nav": "tabs"
+    },
+    "home": {
+      "defaultFocus": "apps",
+      "root": {
+        "type": "overlay",
+        "width": "fill",
+        "height": "fill",
+        "children": [
+          {
+            "type": "backdrop",
+            "source": "focused",
+            "fallback": "brand",
+            "scrim": {
+              "bottom": 1,
+              "left": 0.7
+            }
+          },
+          {
+            "type": "stack",
+            "direction": "column",
+            "scroll": true,
+            "width": "fill",
+            "height": "fill",
+            "padding": [
+              48,
+              40,
+              48,
+              0
+            ],
+            "children": [
+              {
+                "type": "hero",
+                "width": 620,
+                "height": 132,
+                "titleSize": 28,
+                "titleLines": 2,
+                "descLines": 1
+              },
+              {
+                "type": "row",
+                "id": "shelf",
+                "data": "focused-service",
+                "margin": [
+                  0,
+                  6,
+                  0,
+                  0
+                ],
+                "gap": 28,
+                "card": {
+                  "width": 228,
+                  "radius": 10,
+                  "label": "focused",
+                  "fill": "deep"
+                },
+                "effect": {
+                  "scale": 1.1,
+                  "ring": false
+                },
+                "focus": {
+                  "down": "apps"
+                }
+              },
+              {
+                "type": "dock",
+                "id": "apps",
+                "items": [
+                  "services",
+                  "search",
+                  "themes",
+                  "settings"
+                ],
+                "gap": 20,
+                "margin": [
+                  0,
+                  10,
+                  0,
+                  0
+                ],
+                "card": {
+                  "width": 104,
+                  "radius": 10
+                },
+                "effect": {
+                  "scale": 1.1,
+                  "ring": false
+                },
+                "focus": {
+                  "up": "shelf"
+                }
+              },
+              {
+                "type": "text",
+                "bind": "status",
+                "style": "kicker",
+                "size": 10,
+                "color": "soft",
+                "width": "fill",
+                "margin": [
+                  0,
+                  16,
+                  0,
+                  40
+                ]
+              }
+            ]
+          },
+          {
+            "type": "clock",
+            "gravity": "top-end",
+            "size": 18,
+            "margin": [
+              0,
+              27,
+              48,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

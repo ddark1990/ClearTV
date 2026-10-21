@@ -1,0 +1,214 @@
+{
+  "format": "cleartv-theme",
+  "version": 2,
+  "id": "candy",
+  "name": "Candy",
+  "colors": {
+    "background": "#1A1033",
+    "backgroundDeep": "#120A26",
+    "panel": "#26184A",
+    "surface": "#3A2470",
+    "line": "#5B3FA0",
+    "text": "#FFF5FB",
+    "textMuted": "#E3D2F5",
+    "textSoft": "#B79FDA",
+    "accent": "#FF5FA2",
+    "good": "#5FF2C1",
+    "bad": "#FF7A7A",
+    "warn": "#FFD166"
+  },
+  "font": {
+    "display": "oxanium",
+    "body": "sans",
+    "scale": 1
+  },
+  "shape": {
+    "radius": 16,
+    "focusRing": 4,
+    "focusScale": 1.06,
+    "cardOpacity": 85
+  },
+  "tiles": {
+    "size": 1
+  },
+  "layout": {
+    "rowSpacing": 20,
+    "header": "full",
+    "backdrop": "gradient",
+    "homeRows": [
+      "services",
+      "watchlist",
+      "continue"
+    ],
+    "serviceAccents": true
+  },
+  "screens": {
+    "service": {
+      "nav": "sidebar"
+    },
+    "home": {
+      "defaultFocus": "services",
+      "root": {
+        "type": "overlay",
+        "width": "fill",
+        "height": "fill",
+        "children": [
+          {
+            "type": "backdrop",
+            "source": "focused",
+            "fallback": "brand",
+            "scrim": {
+              "bottom": 0.9,
+              "left": 0.9
+            }
+          },
+          {
+            "type": "stack",
+            "direction": "row",
+            "width": "fill",
+            "height": "fill",
+            "padding": [
+              48,
+              27,
+              48,
+              27
+            ],
+            "gap": 32,
+            "children": [
+              {
+                "type": "stack",
+                "direction": "column",
+                "width": 404,
+                "height": "fill",
+                "children": [
+                  {
+                    "type": "logo",
+                    "size": 24
+                  },
+                  {
+                    "type": "grid",
+                    "id": "services",
+                    "data": "services",
+                    "columns": 2,
+                    "gap": 18,
+                    "margin": [
+                      0,
+                      18,
+                      0,
+                      0
+                    ],
+                    "card": {
+                      "width": 180,
+                      "label": "overlay",
+                      "logoSize": 60
+                    },
+                    "effect": {
+                      "ring": true,
+                      "scale": 1.06
+                    }
+                  },
+                  {
+                    "type": "spacer"
+                  },
+                  {
+                    "type": "nav",
+                    "id": "tools",
+                    "items": [
+                      "search",
+                      "themes",
+                      "settings"
+                    ],
+                    "itemStyle": "pill",
+                    "gap": 10,
+                    "size": 14
+                  }
+                ]
+              },
+              {
+                "type": "stack",
+                "direction": "column",
+                "scroll": false,
+                "weight": 1,
+                "children": [
+                  {
+                    "type": "clock",
+                    "size": 16,
+                    "gravity": "top-end"
+                  },
+                  {
+                    "type": "hero",
+                    "width": "fill",
+                    "height": 150,
+                    "titleSize": 30,
+                    "titleLines": 2,
+                    "descLines": 2
+                  },
+                  {
+                    "type": "stack",
+                    "direction": "column",
+                    "scroll": true,
+                    "width": "fill",
+                    "weight": 1,
+                    "children": [
+                      {
+                        "type": "row",
+                        "data": "watchlist",
+                        "title": "Watchlist",
+                        "margin": [
+                          0,
+                          16,
+                          0,
+                          0
+                        ],
+                        "card": {
+                          "width": 200,
+                          "label": "below"
+                        },
+                        "effect": {
+                          "ring": true
+                        }
+                      },
+                      {
+                        "type": "row",
+                        "data": "continue",
+                        "title": "Continue watching",
+                        "margin": [
+                          0,
+                          16,
+                          0,
+                          0
+                        ],
+                        "card": {
+                          "width": 200,
+                          "label": "below"
+                        },
+                        "effect": {
+                          "ring": true
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "bind": "status",
+                        "style": "kicker",
+                        "size": 10,
+                        "color": "soft",
+                        "width": "fill",
+                        "margin": [
+                          0,
+                          16,
+                          0,
+                          0
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "height": "fill"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

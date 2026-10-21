@@ -1,0 +1,47 @@
+{
+  "format": "cleartv-theme",
+  "version": 1,
+  "id": "default",
+  "name": "Stargazer",
+  "colors": {
+    "background": "#0B0D0F",
+    "backgroundDeep": "#060809",
+    "panel": "#15181B",
+    "surface": "#22272C",
+    "line": "#3A3D3F",
+    "text": "#F3F5F7",
+    "textMuted": "#B8BBBD",
+    "textSoft": "#858B90",
+    "accent": "#CBD1D8",
+    "good": "#8FBCA2",
+    "bad": "#C57474",
+    "warn": "#D6B36A"
+  },
+  "font": {
+    "display": "oxanium",
+    "body": "sans",
+    "scale": 1
+  },
+  "shape": {
+    "radius": 6,
+    "focusRing": 3,
+    "focusScale": 1.04,
+    "cardOpacity": 90
+  },
+  "tiles": {
+    "size": 1
+  },
+  "layout": {
+    "engine": "classic",
+    "rowSpacing": 16,
+    "header": "full",
+    "backdrop": "stars",
+    "servicesStyle": "cards",
+    "homeRows": [
+      "services",
+      "continue",
+      "watchlist"
+    ],
+    "serviceAccents": true
+  }
+}

@@ -1,0 +1,841 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cleartv-theme-v1",
+  "title": "ClearTV theme",
+  "description": "A ClearTV theme (format versions 1 and 2). Data only: no scripts, expressions, file paths or code. Version 1: design tokens (colours, fonts, shape, tiles, layout) and one of three built-in layout engines. Version 2: the same tokens plus a composable layout document (screens) built from components, and optional image assets. Unknown keys are rejected everywhere. Maximum size 64 KB. ClearTV also checks contrast on the merged theme (text and textMuted at least 4.5:1 on background, text at least 4.5:1 on panel, translucent cards and surface, textMuted 3:1 on panel, textSoft 3:1 on background, accent 3:1 on background and 2:1 on surface) and whole-layout rules for version 2 (unique ids, focus targets exist, at most one backdrop, the home reaches services, search, themes and settings).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "version",
+    "id",
+    "name"
+  ],
+  "properties": {
+    "format": {
+      "const": "cleartv-theme",
+      "description": "Always \"cleartv-theme\"."
+    },
+    "version": {
+      "description": "Format version: 1 (tokens and layout.engine) or 2 (tokens plus screens and assets).",
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,31}$",
+      "description": "Short unique id: lowercase letters, digits and dashes, 1-32 characters. Importing a theme with the same id as a saved custom theme replaces it; built-in ids (default, daylight, cinema, oled, candy) cannot be replaced."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40,
+      "description": "Name shown in Settings > Theme. 1-40 printable characters, no < or >."
+    },
+    "author": {
+      "type": "string",
+      "maxLength": 40,
+      "description": "Optional credit shown under the name. At most 40 printable characters, no < or >."
+    },
+    "colors": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Opaque colours as #RRGGBB. Alpha, colour names and CSS functions are rejected.",
+      "properties": {
+        "background": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Main screen background (home, service screens, guide, settings)."
+        },
+        "backgroundDeep": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Deeper fill behind artwork while it loads and behind logo plates."
+        },
+        "panel": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Cards, panels, menus and settings rows at rest."
+        },
+        "surface": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Fill of the focused row, tile or button."
+        },
+        "line": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Hairlines, borders and progress tracks."
+        },
+        "text": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Primary text (titles, labels)."
+        },
+        "textMuted": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Secondary text (descriptions, values)."
+        },
+        "textSoft": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Kickers, hints and row headings."
+        },
+        "accent": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Focus ring and ClearTV's own highlights. With layout.serviceAccents false it also replaces each service's brand accent."
+        },
+        "good": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Positive state, such as an On value or a playing channel."
+        },
+        "bad": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Errors."
+        },
+        "warn": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Warnings and health notices."
+        }
+      }
+    },
+    "font": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Typefaces from the ones ClearTV ships (Oxanium) or every Fire TV already has. Font files are never downloaded.",
+      "properties": {
+        "display": {
+          "enum": [
+            "oxanium",
+            "sans",
+            "sans-medium",
+            "sans-light",
+            "condensed",
+            "serif",
+            "mono"
+          ],
+          "description": "Face for headings, kickers, tile names and buttons."
+        },
+        "body": {
+          "enum": [
+            "sans",
+            "sans-medium",
+            "sans-light",
+            "condensed",
+            "serif",
+            "mono"
+          ],
+          "description": "Face for titles, descriptions and other body text."
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 0.85,
+          "maximum": 1.25,
+          "description": "Text size multiplier for every screen (1 = normal)."
+        }
+      }
+    },
+    "shape": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Corners and focus.",
+      "properties": {
+        "radius": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 24,
+          "description": "Corner radius of cards, tiles and rows in dp (Default 6)."
+        },
+        "focusRing": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 6,
+          "description": "Width of the focus ring in dp (Default 3)."
+        },
+        "focusScale": {
+          "type": "number",
+          "minimum": 1.0,
+          "maximum": 1.1,
+          "description": "How much a focused tile grows (1.04 = 4%)."
+        },
+        "cardOpacity": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 100,
+          "description": "Opacity of cards and tiles in percent: below 100 they are frosted panels that let the background show through (Default 90). Text contrast is checked on the blended colour."
+        }
+      }
+    },
+    "tiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Content tiles on the home rows and in every service. Tiles are always landscape (16:9) so artwork is never cropped to a portrait.",
+      "properties": {
+        "size": {
+          "type": "number",
+          "minimum": 0.8,
+          "maximum": 1.3,
+          "description": "Tile size multiplier (1 = normal). Grids keep four columns and fit the screen width."
+        }
+      }
+    },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Home screen and row layout. In version 2 the engine key is not allowed (the layout is in screens); rowSpacing, homeRows and the other keys only affect version 1 homes and are kept for compatibility.",
+      "properties": {
+        "engine": {
+          "enum": [
+            "classic",
+            "apple",
+            "rail"
+          ],
+          "description": "Layout engine: the structure of the home screen and every service screen. classic: header, service tiles, rows (service screens: section list on the left, header text, shelves). apple: tvOS-style home: one full-screen backdrop fading into a dark base, a Top Shelf carousel of the focused service's Continue watching and Watchlist, and an app grid in rows of five rounded icons (services and Search all, then Themes and Settings) with the name only under the focused icon; focus is a scale-up with a soft shadow and a highlight sweep (service screens: section tabs across the top over a full-bleed backdrop, shelves below; Pluto TV: the live preview fills the top-right corner behind the channel info). rail: Google TV/Netflix-style sidebar with Search, the services, Themes and Settings, a large featured banner of the focused item and a four-column grid of cards (service screens: a wide frosted section sidebar and a featured banner above the shelves; Pluto TV: a larger preview)."
+        },
+        "rowSpacing": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 48,
+          "description": "Space between rows of tiles in dp (Default 16)."
+        },
+        "header": {
+          "enum": [
+            "full",
+            "compact",
+            "minimal"
+          ],
+          "description": "Home header: full (name, kicker and version), compact (name only, smaller), minimal (just the Search and Settings buttons). Used by the classic engine; apple and rail have their own chrome."
+        },
+        "backdrop": {
+          "enum": [
+            "stars",
+            "gradient",
+            "plain"
+          ],
+          "description": "Home background: the still star field, a soft accent gradient, or the plain background colour. The apple engine always shows the focused item's backdrop; rail uses this behind the banner."
+        },
+        "homeRows": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "contains": {
+            "const": "services"
+          },
+          "items": {
+            "enum": [
+              "services",
+              "continue",
+              "watchlist"
+            ]
+          },
+          "description": "Which home rows show, top to bottom: services (the service tiles, required), continue (Continue watching), watchlist (Watchlist/favorites). Leaving a row out hides it on the home screen only; its data is kept."
+        },
+        "serviceAccents": {
+          "type": "boolean",
+          "description": "true: each service keeps its own brand accent on its screens. false: every service uses this theme's accent."
+        },
+        "servicesStyle": {
+          "enum": [
+            "cards",
+            "hero"
+          ],
+          "description": "Service tiles on the home screen: cards (the standard tiles) or hero (a big, tall banner row with larger logos, like a featured shelf). Used by the classic engine."
+        }
+      }
+    },
+    "assets": {
+      "description": "Version 2: named images the layout can use (backdrop source asset, image, logo). At most 8. Each is either an https image link with a download cap or a bundled image.",
+      "type": "object",
+      "maxProperties": 8,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]{0,23}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "description": "An https:// link to a .png, .jpg, .jpeg or .webp image, at most 300 characters, no user name or password. Downloaded once, without following redirects, decoded downsampled.",
+            "type": "string",
+            "pattern": "^https://[A-Za-z0-9.-]+\\.[A-Za-z0-9.-]+/[!-~]*\\.(png|jpg|jpeg|webp|PNG|JPG|JPEG|WEBP)(\\?[!-~]*)?$",
+            "maxLength": 300
+          },
+          "bundled": {
+            "description": "An image shipped with ClearTV: logo (the app banner) or stars (the Default star field).",
+            "enum": [
+              "logo",
+              "stars"
+            ]
+          },
+          "maxKb": {
+            "description": "Download cap in KB (16-512, default 256). A larger file is not used.",
+            "type": "integer",
+            "minimum": 16,
+            "maximum": 512
+          }
+        }
+      }
+    },
+    "screens": {
+      "description": "Version 2: the layout document. home is required; service sets the chrome of the service screens (YouTube, Prime Video, Tubi), the Pluto TV guide and the players' overlays.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "home"
+      ],
+      "properties": {
+        "home": {
+          "description": "The home screen: a component tree and the component that has focus first.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "root",
+            "defaultFocus"
+          ],
+          "properties": {
+            "defaultFocus": {
+              "description": "Id of the component focused on launch (it must hold something focusable).",
+              "type": "string"
+            },
+            "root": {
+              "description": "The root component, usually an overlay holding a backdrop and a stack.",
+              "$ref": "#/$defs/component"
+            }
+          }
+        },
+        "service": {
+          "description": "Service screen chrome.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "nav": {
+              "description": "list: section list on the left, title artwork top right (classic). tabs: section tabs across the top over a full-bleed backdrop of the focused tile, titles under the focused card only (tvOS-like). sidebar: a wide frosted section sidebar and a featured banner. The Pluto TV guide follows: tabs puts the preview flush in the top-right corner, sidebar makes it larger.",
+              "enum": [
+                "list",
+                "tabs",
+                "sidebar"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "colorRef": {
+      "description": "A colour: a token (background, deep, panel, surface, line, text, muted, soft, accent, good, bad, warn from colors; card = panel at shape.cardOpacity; brand = the service's own colour on service items; white; transparent) or an opaque hex colour #RRGGBB.",
+      "anyOf": [
+        {
+          "enum": [
+            "background",
+            "deep",
+            "panel",
+            "surface",
+            "line",
+            "text",
+            "muted",
+            "soft",
+            "accent",
+            "good",
+            "bad",
+            "warn",
+            "card",
+            "brand",
+            "white",
+            "transparent"
+          ]
+        },
+        {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        }
+      ]
+    },
+    "size": {
+      "description": "dp (0-1920), fill (the parent's size) or wrap (the content's size).",
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1920
+        },
+        {
+          "enum": [
+            "fill",
+            "wrap"
+          ]
+        }
+      ]
+    },
+    "box": {
+      "description": "dp on every side (0-400), or [left, top, right, bottom].",
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 400
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 400
+          },
+          "minItems": 4,
+          "maxItems": 4
+        }
+      ]
+    },
+    "component": {
+      "description": "One layout component. Keys allowed depend on type (see docs/THEMES.md, Component reference); others are rejected.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "description": "Component type. Containers: stack (children in a row or column, optionally scrolling), overlay (children layered, placed by gravity and margin), spacer (empty space; takes the leftover space in a stack unless sized). Content: backdrop (the single full-screen image layer: the focused item's art, an asset or a fallback, with long scrims), hero (kicker, title and description of whatever is focused), text (static or bound), clock, logo (the ClearTV wordmark or an asset), image (an asset). Interactive: button (search, themes or settings), nav (a list of services and buttons; dock, sidebar and tabs are nav presets: icons in a row, logo and text in a column, text in a row), row (a sideways shelf of landscape cards bound to data), grid (the same in lines of columns).",
+          "enum": [
+            "stack",
+            "overlay",
+            "spacer",
+            "backdrop",
+            "hero",
+            "text",
+            "clock",
+            "logo",
+            "image",
+            "button",
+            "nav",
+            "dock",
+            "sidebar",
+            "tabs",
+            "row",
+            "grid"
+          ]
+        },
+        "id": {
+          "description": "Id other components refer to in focus rules and defaultFocus. 1-32 lowercase letters, digits, dashes; unique in the screen.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,31}$"
+        },
+        "width": {
+          "description": "Width.",
+          "$ref": "#/$defs/size"
+        },
+        "height": {
+          "description": "Height. Default wrap; a backdrop always fills its container.",
+          "$ref": "#/$defs/size"
+        },
+        "weight": {
+          "description": "Share of the leftover space inside a stack (0-10).",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "padding": {
+          "description": "Inner space.",
+          "$ref": "#/$defs/box"
+        },
+        "margin": {
+          "description": "Outer space (in an overlay: the offset from the gravity edge).",
+          "$ref": "#/$defs/box"
+        },
+        "background": {
+          "description": "Fill behind the component.",
+          "$ref": "#/$defs/colorRef"
+        },
+        "radius": {
+          "description": "Corner radius of the background in dp (0-48); default shape.radius.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 48
+        },
+        "opacity": {
+          "description": "Opacity of the whole component (0.1-1).",
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 1
+        },
+        "gravity": {
+          "description": "Where the component sits in an overlay (and its cross-axis alignment in a stack).",
+          "enum": [
+            "top-start",
+            "top",
+            "top-end",
+            "start",
+            "center",
+            "end",
+            "bottom-start",
+            "bottom",
+            "bottom-end"
+          ]
+        },
+        "focus": {
+          "description": "Focus rules: the component that UP, DOWN, LEFT or RIGHT goes to from anything focusable in this component (by id). Unset directions use the nearest item on screen.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "up": {
+              "description": "Target id.",
+              "type": "string"
+            },
+            "down": {
+              "description": "Target id.",
+              "type": "string"
+            },
+            "left": {
+              "description": "Target id.",
+              "type": "string"
+            },
+            "right": {
+              "description": "Target id.",
+              "type": "string"
+            }
+          }
+        },
+        "fade": {
+          "description": "backdrop: cross-fade time in ms when the image changes (0-600).",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600
+        },
+        "direction": {
+          "description": "stack and nav: row or column.",
+          "enum": [
+            "row",
+            "column"
+          ]
+        },
+        "gap": {
+          "description": "Space between children, items or cards in dp (0-96).",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 96
+        },
+        "align": {
+          "description": "Alignment of children along the cross axis (stack), items (nav) or text (text).",
+          "enum": [
+            "start",
+            "center",
+            "end",
+            "stretch"
+          ]
+        },
+        "scroll": {
+          "description": "stack: scrolls in its direction; the focused item is always brought fully on screen.",
+          "type": "boolean"
+        },
+        "children": {
+          "description": "stack and overlay: the child components.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/component"
+          }
+        },
+        "source": {
+          "description": "backdrop: focused (the art of the focused card, or of the focused service's first item), asset, or none (only the fallback).",
+          "enum": [
+            "focused",
+            "asset",
+            "none"
+          ]
+        },
+        "asset": {
+          "description": "backdrop, image, logo: the name of an entry in assets.",
+          "type": "string"
+        },
+        "fallback": {
+          "description": "backdrop: what shows when there is no art: brand (the service colour and its logo), stars, gradient, plain.",
+          "enum": [
+            "brand",
+            "stars",
+            "gradient",
+            "plain"
+          ]
+        },
+        "scrim": {
+          "description": "backdrop: scrims that melt the image into the background colour: bottom (one long eased fade to solid, 0-1), left (behind text, 0-1), top (0-1).",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bottom": {
+              "description": "Strength 0-1.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "left": {
+              "description": "Strength 0-1.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "top": {
+              "description": "Strength 0-1.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "titleSize": {
+          "description": "hero: title size in sp (16-48).",
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 48
+        },
+        "titleLines": {
+          "description": "hero: title lines (1-3), longer titles end with an ellipsis; the hero never grows.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "descLines": {
+          "description": "hero: description lines (0-3).",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "kicker": {
+          "description": "hero: show the small line above the title (service or section).",
+          "type": "boolean"
+        },
+        "shadow": {
+          "description": "hero, text, clock: a soft text shadow for reading over images (dark themes).",
+          "type": "boolean"
+        },
+        "color": {
+          "description": "Text colour (text, clock, logo, hero, nav and button labels).",
+          "$ref": "#/$defs/colorRef"
+        },
+        "text": {
+          "description": "text: static text, at most 80 printable characters.",
+          "type": "string",
+          "maxLength": 80
+        },
+        "bind": {
+          "description": "text: live value instead of static text: clock, version, status (the sync/status line), app (ClearTV), focused-title, focused-service.",
+          "enum": [
+            "clock",
+            "version",
+            "status",
+            "app",
+            "focused-title",
+            "focused-service"
+          ]
+        },
+        "size": {
+          "description": "Text size in sp (8-64).",
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 64
+        },
+        "style": {
+          "description": "text and clock: display, body or kicker (small capitals). button: tile, icon, text, logo-text or pill.",
+          "enum": [
+            "display",
+            "body",
+            "kicker",
+            "tile",
+            "icon",
+            "text",
+            "logo-text",
+            "pill"
+          ]
+        },
+        "lines": {
+          "description": "text: number of lines (1-4).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "scale": {
+          "description": "image: crop (fill, cut the edges) or fit (whole image).",
+          "enum": [
+            "crop",
+            "fit"
+          ]
+        },
+        "action": {
+          "description": "button: what OK does.",
+          "enum": [
+            "search",
+            "themes",
+            "settings"
+          ]
+        },
+        "label": {
+          "description": "button: its text, at most 32 characters (default Search all, Themes, Settings).",
+          "type": "string",
+          "maxLength": 32
+        },
+        "glyph": {
+          "description": "text-style buttons and nav items: show the line icon.",
+          "type": "boolean"
+        },
+        "items": {
+          "description": "nav: what it lists, in order, each at most once: services (the four services), search, themes, settings. Default all four.",
+          "type": "array",
+          "items": {
+            "enum": [
+              "services",
+              "search",
+              "themes",
+              "settings"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "itemStyle": {
+          "description": "nav: tile (card with logo and name), icon (app icon in the brand colour, name only when focused), text (tab), logo-text (sidebar entry), pill.",
+          "enum": [
+            "tile",
+            "icon",
+            "text",
+            "logo-text",
+            "pill"
+          ]
+        },
+        "data": {
+          "description": "row and grid: services, continue (Continue watching), watchlist or favorites (the Watchlist), focused-service (the Continue watching and Watchlist of the service focused in a nav or services row: a Top Shelf), search (a Search all card), service:youtube, service:prime, service:tubi, service:pluto (that service's items).",
+          "enum": [
+            "services",
+            "continue",
+            "watchlist",
+            "favorites",
+            "focused-service",
+            "search",
+            "service:youtube",
+            "service:prime",
+            "service:tubi",
+            "service:pluto"
+          ]
+        },
+        "title": {
+          "description": "row and grid: heading, at most 40 characters.",
+          "type": "string",
+          "maxLength": 40
+        },
+        "titleColor": {
+          "description": "row and grid: heading colour.",
+          "$ref": "#/$defs/colorRef"
+        },
+        "hideEmpty": {
+          "description": "row and grid: hide when there is nothing to show (default true).",
+          "type": "boolean"
+        },
+        "maxItems": {
+          "description": "row and grid: at most this many cards (1-40).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 40
+        },
+        "columns": {
+          "description": "grid: cards per line (2-6).",
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 6
+        },
+        "card": {
+          "description": "Card template for rows, grids and tile/icon nav items. Landscape only.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "width": {
+              "description": "Card width in dp (80-480), times tiles.size.",
+              "type": "integer",
+              "minimum": 80,
+              "maximum": 480
+            },
+            "aspect": {
+              "description": "Landscape shape: 16:9, 2:1, 21:9 or 4:3. Portrait (poster) cards do not exist.",
+              "enum": [
+                "16:9",
+                "2:1",
+                "21:9",
+                "4:3"
+              ]
+            },
+            "radius": {
+              "description": "Corner radius in dp (0-48); default shape.radius.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 48
+            },
+            "label": {
+              "description": "Title: below (always), focused (only under the focused card), overlay (on the art), none.",
+              "enum": [
+                "none",
+                "below",
+                "focused",
+                "overlay"
+              ]
+            },
+            "subtitle": {
+              "description": "Show the service name under the title.",
+              "type": "boolean"
+            },
+            "fill": {
+              "description": "Card fill behind art or logo (service tiles: card = translucent panel, brand = the service colour).",
+              "$ref": "#/$defs/colorRef"
+            },
+            "logoSize": {
+              "description": "Logo or glyph size on service and tool cards in dp (0 = automatic, up to 160).",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 160
+            },
+            "progress": {
+              "description": "Show the watch progress bar (default true).",
+              "type": "boolean"
+            }
+          }
+        },
+        "effect": {
+          "description": "Focus animation for items: scale (1-1.25, default shape.focusScale), shadow (elevation in dp, 0-40), glow (a soft accent ring), ring (the focus ring, default true), shine (a highlight that sweeps across once).",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "scale": {
+              "description": "Focused size (1-1.25).",
+              "type": "number",
+              "minimum": 1,
+              "maximum": 1.25
+            },
+            "shadow": {
+              "description": "Soft shadow under the focused item, dp (0-40). Off by default; costs drawing on every focus move (warn_slow). Themes must match Default's focus speed, so leave it off.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 40,
+              "default": 0
+            },
+            "glow": {
+              "description": "Accent glow ring. Off by default; costs drawing on every focus move (warn_slow). Themes must match Default's focus speed, so leave it off.",
+              "type": "boolean"
+            },
+            "ring": {
+              "description": "Focus ring.",
+              "type": "boolean"
+            },
+            "shine": {
+              "description": "Highlight sweep. Off by default; costs drawing on every focus move (warn_slow). Themes must match Default's focus speed, so leave it off.",
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    }
+  }
+}

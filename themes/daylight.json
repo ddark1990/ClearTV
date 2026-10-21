@@ -1,0 +1,236 @@
+{
+  "format": "cleartv-theme",
+  "version": 2,
+  "id": "daylight",
+  "name": "Daylight",
+  "colors": {
+    "background": "#EEF1F4",
+    "backgroundDeep": "#DDE2E7",
+    "panel": "#FFFFFF",
+    "surface": "#E2E8EF",
+    "line": "#C3CBD3",
+    "text": "#14181C",
+    "textMuted": "#3F4952",
+    "textSoft": "#5D6873",
+    "accent": "#1F5FD1",
+    "good": "#2E7D4F",
+    "bad": "#B23A3A",
+    "warn": "#9A6A00"
+  },
+  "font": {
+    "display": "sans-medium",
+    "body": "sans",
+    "scale": 1
+  },
+  "shape": {
+    "radius": 12,
+    "focusRing": 3,
+    "focusScale": 1.04,
+    "cardOpacity": 92
+  },
+  "tiles": {
+    "size": 1
+  },
+  "layout": {
+    "rowSpacing": 16,
+    "header": "full",
+    "backdrop": "gradient",
+    "homeRows": [
+      "services",
+      "continue",
+      "watchlist"
+    ],
+    "serviceAccents": true
+  },
+  "screens": {
+    "service": {
+      "nav": "sidebar"
+    },
+    "home": {
+      "defaultFocus": "menu",
+      "root": {
+        "type": "overlay",
+        "width": "fill",
+        "height": "fill",
+        "children": [
+          {
+            "type": "backdrop",
+            "source": "none",
+            "fallback": "gradient",
+            "scrim": {
+              "bottom": 0,
+              "left": 0
+            }
+          },
+          {
+            "type": "stack",
+            "direction": "row",
+            "width": "fill",
+            "height": "fill",
+            "children": [
+              {
+                "type": "stack",
+                "direction": "column",
+                "width": 236,
+                "height": "fill",
+                "background": "card",
+                "radius": 0,
+                "padding": [
+                  16,
+                  27,
+                  16,
+                  27
+                ],
+                "children": [
+                  {
+                    "type": "logo",
+                    "size": 22,
+                    "margin": [
+                      8,
+                      0,
+                      0,
+                      0
+                    ]
+                  },
+                  {
+                    "type": "text",
+                    "bind": "version",
+                    "style": "kicker",
+                    "size": 10,
+                    "color": "soft",
+                    "margin": [
+                      8,
+                      4,
+                      0,
+                      16
+                    ]
+                  },
+                  {
+                    "type": "sidebar",
+                    "id": "menu",
+                    "items": [
+                      "search",
+                      "services",
+                      "themes",
+                      "settings"
+                    ],
+                    "gap": 4,
+                    "size": 16,
+                    "focus": {
+                      "right": "main"
+                    }
+                  },
+                  {
+                    "type": "spacer"
+                  },
+                  {
+                    "type": "text",
+                    "bind": "status",
+                    "style": "kicker",
+                    "size": 9,
+                    "color": "soft",
+                    "lines": 2,
+                    "width": "fill",
+                    "margin": [
+                      8,
+                      0,
+                      0,
+                      0
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "stack",
+                "id": "main",
+                "direction": "column",
+                "scroll": true,
+                "weight": 1,
+                "height": "fill",
+                "padding": [
+                  24,
+                  27,
+                  48,
+                  27
+                ],
+                "children": [
+                  {
+                    "type": "stack",
+                    "direction": "column",
+                    "width": "fill",
+                    "height": 196,
+                    "background": "surface",
+                    "radius": 14,
+                    "padding": [
+                      24,
+                      20,
+                      24,
+                      20
+                    ],
+                    "children": [
+                      {
+                        "type": "hero",
+                        "width": "fill",
+                        "height": 156,
+                        "titleSize": 28,
+                        "titleLines": 2,
+                        "descLines": 2,
+                        "shadow": false
+                      }
+                    ]
+                  },
+                  {
+                    "type": "grid",
+                    "data": "continue",
+                    "title": "Continue watching",
+                    "columns": 3,
+                    "margin": [
+                      0,
+                      18,
+                      0,
+                      0
+                    ],
+                    "card": {
+                      "width": 188,
+                      "label": "below",
+                      "subtitle": true
+                    },
+                    "effect": {
+                      "ring": true
+                    },
+                    "focus": {
+                      "left": "menu"
+                    }
+                  },
+                  {
+                    "type": "grid",
+                    "data": "watchlist",
+                    "title": "Watchlist",
+                    "columns": 3,
+                    "margin": [
+                      0,
+                      18,
+                      0,
+                      0
+                    ],
+                    "card": {
+                      "width": 188,
+                      "label": "below",
+                      "subtitle": true
+                    },
+                    "effect": {
+                      "ring": true
+                    },
+                    "focus": {
+                      "left": "menu"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

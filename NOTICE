@@ -1,0 +1,51 @@
+ClearTV
+Copyright (C) 2026 ddark1990
+
+ClearTV was created by ddark1990.
+Original project: https://github.com/ddark1990/ClearTV
+
+ClearTV is free software, licensed under the GNU General Public License v3.0
+(see LICENSE). Redistributions and forks, in source or binary form, must keep
+this NOTICE file and keep the credit visible to users: the "Created by
+ddark1990. Original project: github.com/ddark1990/ClearTV" line in the app's
+Settings > About screen and the "Credits & forks" section of the README.
+(This is a reasonable author attribution under GPL-3.0 section 7(b).)
+
+Third-party components
+----------------------
+- Oxanium font: Copyright 2019 The Oxanium Project Authors. SIL Open Font
+  License 1.1 (app/src/main/assets/fonts/OFL-Oxanium.txt).
+- AndroidX / Jetpack Media3 (ExoPlayer), AndroidX WebKit: Apache License 2.0,
+  Copyright The Android Open Source Project.
+
+Filter lists (bundled in filters-src/, compiled into engine.bin)
+- EasyList, EasyPrivacy, EasyList Cookie: https://easylist.to/  (easylist.txt,
+  easyprivacy.txt, easylist-cookie.txt). Dual-licensed GPLv3 or CC BY-SA 3.0;
+  used here under GPLv3. https://easylist.to/pages/licence.html
+- uBlock Origin uAssets (filters, privacy, badware, quick fixes, unbreak,
+  cookie annoyances): https://github.com/uBlockOrigin/uAssets  GPLv3.
+- AdGuard Base filter (without EasyList) and AdGuard Mobile Ads filter:
+  https://filters.adtidy.org/extension/ublock/filters/2_without_easylist.txt and
+  /11.txt, from https://github.com/AdguardTeam/AdguardFilters  GPLv3.
+- Peter Lowe's ad and tracking server list: https://pgl.yoyo.org/adservers/
+  License not stated as an open-source license; used under the site's
+  published terms. Source noted here.
+- filters-src/ad-domains.txt.gz: a DNS-style domain list compiled from
+  public hosts lists; individual sources and licenses were not recorded.
+  Kept, with this source note.
+- Public Suffix List: https://publicsuffix.org/  Mozilla Public License 2.0.
+
+Service logos (app/src/main/assets/icons/)
+The Prime Video, YouTube, Pluto TV and Tubi logos are trademarks of their
+owners, shown unaltered only to identify each service (nominative use). They
+come from, and are used in line with, the owners' brand resources:
+- YouTube: https://www.youtube.com/howyoutubeworks/resources/brand-resources/
+- Prime Video: https://m.media-amazon.com/images/G/01/CooperWebsite/dvp/downloads/Prime_Video_Logo_Guidelines_Q1_2020.pdf
+- Pluto TV: https://corporate.pluto.tv/ (press / media kit)
+- Tubi: https://brand.tubi.tv/
+These brand kits are written for partners and grant no license to ClearTV.
+ClearTV does not modify, recolour or combine the marks, and does not imply
+endorsement.
+
+Prime Video, YouTube, Pluto TV and Tubi are trademarks of their respective
+owners. ClearTV is not affiliated with or endorsed by them.

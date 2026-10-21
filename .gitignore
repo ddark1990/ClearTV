@@ -1,0 +1,41 @@
+# Build outputs
+.gradle/
+build/
+*/build/
+app/release/
+*.apk
+*.aab
+*.idsig
+!dist/*.apk
+
+# Local machine config
+local.properties
+.idea/
+*.iml
+.DS_Store
+
+# Secrets: never commit
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+signing/*
+!signing/README.md
+*.token
+*_tok.txt
+.env
+.env.*
+
+# Test screenshots and scratch
+shots/
+tvshots/
+qa/**/*.png
+qa/**/*.jpg
+tv-shot-*.png
+cleartv-icon/preview.png
+*.log
+tmp/
+
+# Personal agent notes (kept locally, not published)
+.agent/

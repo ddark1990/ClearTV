@@ -1,0 +1,22 @@
+# gitleaks config for ClearTV (run: gitleaks dir . --config .gitleaks.toml).
+# Default rules stay on. Each allowlist below is scoped to one rule AND one path AND
+# (except third-party filter lists) one exact value, so nothing else is silenced.
+title = "ClearTV"
+
+[extend]
+useDefault = true
+
+# Third-party filter lists (uBlock Origin, AdGuard, EasyList...) contain hashes and
+# tokens that look like keys; they are public upstream data, not ClearTV secrets.
+[[allowlists]]
+description = "third-party filter lists in filters-src/"
+targetRules = ["generic-api-key", "sourcegraph-access-token"]
+paths = ['''^filters-src/[^/]+\.txt$''']
+
+# The YouTube TV app's public OAuth device-flow client (ships in every YouTube TV app).
+[[allowlists]]
+description = "YouTube TV public OAuth client id/secret"
+targetRules = ["generic-api-key", "gcp-api-key"]
+condition = "AND"
+paths = ['''^app/src/main/java/com/goomero/cleartv/tv/YouTubeSource\.java$''', '''^app/src/main/assets/config\.json$''']
+regexes = ['''^SboVhoG9s0rNafixCSGGKXAT$''', '''^861556708454-d6dlm3lh05idd8npek18k6be8ba3oc68\.apps\.googleusercontent\.com$''']

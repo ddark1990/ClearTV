@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Ui.BG: shown as the window background before the first frame -->
+    <color name="bg">#FF0B0D0F</color>
+</resources>

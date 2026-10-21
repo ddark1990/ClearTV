@@ -1,0 +1,129 @@
+# Changelog
+
+What changed in each ClearTV version, newest first. ClearTV is made by [ddark1990](https://github.com/ddark1990) and is free software under the [GPL-3.0 license](LICENSE).
+
+Download builds from [Releases](https://github.com/ddark1990/ClearTV/releases). Found a problem? Open an [issue](https://github.com/ddark1990/ClearTV/issues); for security problems see [SECURITY.md](SECURITY.md).
+
+## 0.1.20 (2026-10-21)
+
+- If live TV or a video freezes because the stream stopped arriving, ClearTV now notices within about 10 seconds and reloads it by itself, the same as changing the channel and back. If it keeps freezing it tries a few more times with longer waits, then tells you instead of looping.
+- A live channel that falls too far behind (after a long pause or a stall) jumps back to live instead of stopping.
+- Hold OK on a video anywhere (home rows in every theme, search results, service rows, the Pluto guide) for a new **Go to channel** item: YouTube opens the video's channel, Pluto TV opens that live channel full screen, Tubi and Prime Video episodes get **Go to show** (the series or show page). It is left out where a service has no such page. A short press of OK works exactly as before.
+- Pluto TV guide: the "hold OK · menu / ▶▶ · favorite" hint moved up next to "PLUTO TV · LIVE", so it no longer covers the last category chip; the chip row fades at the edge when there are more chips.
+- Pluto TV guide: the info panel now moves on to the next show when the hour or half hour turns over, instead of still showing the one that just ended.
+- Picking a theme no longer reopens a service that ClearTV was launched into from a link.
+- A short network hiccup while a Pluto TV channel or a video in the native player (Tubi and others) is playing no longer shows "Tuning" or "Loading": a request that hangs is sent again within about 2.5 seconds, and Pluto TV live keeps more of the channel loaded ahead (it plays about 5 seconds further behind live, 20 s instead of 15 s). The hint only appears if the picture has been waiting for more than 2.5 seconds.
+- Settings now built into the app: ClearTV no longer downloads its service settings from an external server. Fixes for a service change arrive with normal ClearTV updates (Settings > Updates).
+- The install guide now points to the signed app file on GitHub Releases (published by the owner); building from source is optional.
+
+## 0.1.19 (2026-10-20)
+
+- ClearTV can update itself: Settings > Updates checks for a new version once a day (you can turn that off) or when you ask, and installs it only if it really comes from ClearTV. The first time, it shows you how to allow installs.
+- New **Get themes** in the Themes picker: browse themes with a preview, install, update or delete them. Daylight, OLED High Contrast and Candy now live there (if you used one, install it again from Get themes).
+- Pressing DOWN through a long grid (Daylight) moves one line at a time to the bottom and UP comes back the same way; focus no longer jumps back up.
+- Theme fixes: the first card's focus ring is no longer cut off at the left edge, rows scroll so the focused card and its row title stay in view, and Candy's top right no longer pushes the hero down.
+
+## 0.1.18 (2026-10-20)
+
+- Settings > About now credits the handle ddark1990.
+
+## 0.1.17 (2026-10-20)
+
+- New Themes button at the top right of the home screen (also in Settings > Theme) with a live preview of the real home. Themes change the whole layout, not just colours, and YouTube, Prime Video, Tubi and Pluto TV follow along.
+- Six built-in themes: Stargazer (the familiar home, still the default), Top Shelf (like the Apple TV home: a big backdrop, what to continue in the focused service, a dock of app icons), Billboard (like a streaming app: tabs, a big billboard, a shelf per service), Daylight (light, with a sidebar and grids), OLED High Contrast and Candy (big glowing service tiles). Pictures are always shown wide, never cut down to a tall shape.
+- Make your own, or have an AI assistant make one: a theme file can now describe any home layout from parts (backdrop, dock, sidebar, tabs, rows, grids, cards, clock) and keeps working when ClearTV updates.
+- Bring themes in from your phone (paste or upload) or from a web link, try them for 30 seconds before keeping them, save the current look to your phone, and go back to Stargazer any time.
+- An AI assistant on your home network can design a theme for you and show it on the TV; it only stays if you say so.
+
+## 0.1.16 (2026-10-20)
+
+- Hold OK for about half a second on any tile or channel, on every service, to open a menu with Play and Add to / Remove from Favorites.
+- A short press still opens things right away, and the ▶▶ shortcut still works.
+- Fixed: pressing BACK on a home card menu now closes the menu instead of ClearTV.
+
+## 0.1.15 (2026-10-20)
+
+- Pluto TV no longer gets stuck on "Tuning..." when you open it.
+- Hovering on the channel that is already playing no longer restarts it.
+
+## 0.1.14 (2026-10-20)
+
+- Opening a movie or show in YouTube Movies & TV now shows Play movie and Trailer (or a note that it must be bought or rented) instead of an empty page.
+- YouTube hover previews now play real muted video.
+- YouTube videos no longer play with sound only behind the loading screen; the picture shows as soon as it starts.
+
+## 0.1.13 (2026-10-20)
+
+- YouTube Movies & TV no longer comes up empty; if nothing is found, it says so plainly.
+- Hover previews are back and now work on every service, as a muted clip or a moving picture of the title.
+
+## 0.1.12 (2026-10-20)
+
+- Tubi Movies and TV Shows now show Tubi's own lists instead of an empty screen.
+- Hover previews were removed so every service browses the same way.
+
+## 0.1.11 (2026-10-20)
+
+- Security fixes: the phone remote is harder for other web pages or devices to abuse, and odd requests can no longer crash the app.
+- Sign-in codes are kept out of logs, and backup restore is stricter.
+
+## 0.1.10 (2026-10-20)
+
+- The app icon now fills its Fire TV tile, with the ClearTV name under the TV picture.
+- Installing this version resets your sign-ins and settings.
+
+## 0.1.9 (2026-10-20)
+
+- The app icon now matches the banner and looks sharp at every size.
+
+## 0.1.7 (2026-10-19)
+
+- Prime Video profiles now show up and switching between them works.
+- The "Who's watching?" screen no longer flashes up and closes for no reason.
+- You can switch profiles from Settings, and highlighted tiles are no longer cut off.
+
+## 0.1.6 (2026-10-19)
+
+- Prime Video sign-in now finishes properly after you approve it.
+- Changing video quality now actually switches within seconds.
+- New: Favorites and Recently watched for live channels, Tubi hover previews, a Resume or Start over prompt, an Up next card and an optional Autoplay next setting.
+- Also: voice search (falls back to the keyboard), a Prime live guide, a home Watchlist row, and backup and restore of your settings.
+
+## 0.1.5 (2026-10-17)
+
+- Prime Video and YouTube now show many more rows and tiles; they keep loading as you scroll.
+- Prime Video adds Live TV, Sports, News, Subscriptions, Store and Categories, plus ratings, cast and all episodes on title pages.
+- YouTube adds a Shorts section and signed-in Subscriptions and Library tabs.
+
+## 0.1.4 (2026-10-17)
+
+- Search all no longer crashes.
+- Tubi now has captions and plays in better quality instead of staying blurry.
+- Pressing OK quickly no longer starts two players; the bottom row of home and focus after removing a card are fixed.
+- The captions button works on Pluto TV.
+
+## 0.1.3 (2026-10-17)
+
+- Prime Video, YouTube and Tubi get their own ClearTV screens, and everything plays inside ClearTV.
+- Sign in to every service by scanning a QR code; profiles, captions and a quality picker are added.
+- New on home: Continue watching, Favorites and one search across all services; plus Skip intro, Up next and a phone remote and keyboard.
+- On-demand shows play without ad breaks, videos start faster, and a new app icon.
+
+## 0.1.2 (2026-10-17)
+
+- YouTube now always stays inside ClearTV and shows the full TV version, including Shorts and Movies & TV.
+- Ad blocking never hides real videos or titles, only ads.
+
+## 0.1.1 (2026-10-17)
+
+- ClearTV is now just for video services: Prime Video, YouTube, Pluto TV and Tubi, each as a card on home.
+- Pluto TV has its own fast TV guide with full-screen live channels.
+- The arrow keys now jump between buttons and tiles, with a clear highlight.
+- New look, faster start and lower memory use; pop-ups and jumps to other sites are blocked.
+
+## 0.1.0 (2026-10-16)
+
+- First version: a TV web browser with built-in ad and tracker blocking.
+- Move around pages with the remote using a pointer or the arrow keys, and watch videos full screen.
+- A home screen with shortcut tiles to popular streaming sites.
+- Ad-blocking lists can update themselves, and you can choose per-site settings.

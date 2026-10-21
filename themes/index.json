@@ -1,0 +1,45 @@
+{
+  "format": "cleartv-theme-index",
+  "version": 1,
+  "themes": [
+    {
+      "id": "daylight",
+      "name": "Daylight",
+      "author": "ClearTV",
+      "version": 1,
+      "description": "Light and calm for daytime rooms: white panels, a sidebar menu and blue focus.",
+      "file": "daylight.json",
+      "preview": "previews/daylight.png",
+      "size": 6134,
+      "sha256": "70c477852b36878e0f0069074f00d61e413511f06e72720607e063dfa6b6e349",
+      "previewSize": 4114,
+      "previewSha256": "db7fdeb40f4c577749cc9d8bf21c5c7b62719ceee9918a6b023347cec7ee39de"
+    },
+    {
+      "id": "oled",
+      "name": "OLED High Contrast",
+      "author": "ClearTV",
+      "version": 1,
+      "description": "True black with bright yellow two-tone focus rings: easiest to read from the couch.",
+      "file": "oled.json",
+      "preview": "previews/oled.png",
+      "size": 3800,
+      "sha256": "5593374ce8c2e1fc5adb98067f1ced104b917b54719b4998ad99dea76a9a2d5b",
+      "previewSize": 2893,
+      "previewSha256": "77e8d49decd3eae5a823a0a467610df6175a54e85659a4b7862f38ff1b34c5b1"
+    },
+    {
+      "id": "candy",
+      "name": "Candy",
+      "author": "ClearTV",
+      "version": 2,
+      "description": "Playful purple and pink with big service cards on the left and rows on the right.",
+      "file": "candy.json",
+      "preview": "previews/candy.png",
+      "size": 5662,
+      "sha256": "e3daeab8c8e9cd729735223fe49be48de8e2b3a1fe5a71b89a36a907f9b14cd6",
+      "previewSize": 3931,
+      "previewSha256": "ca2be20e6e7947715c178198eca7260051cdc3f9d01e0b19db09d5a02ea69d59"
+    }
+  ]
+}

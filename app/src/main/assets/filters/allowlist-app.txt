@@ -1,0 +1,3 @@
+# Browser-specific additions to allowlist.txt (domain set only; filter-list rules still apply to these hosts).
+# Format: domain  # exact|suffix | services | reason
+imasdk.googleapis.com  # exact | HTML5 video players | Google IMA SDK loader; uBO lists do not block it (uBO redirects it to a surrogate). Blocking the loader makes many players wait forever; the ad requests IMA makes (doubleclick/googlesyndication VAST) are still blocked.

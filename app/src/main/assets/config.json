@@ -1,0 +1,204 @@
+{
+ "schema": 1,
+ "version": 1,
+ "published": "2026-10-17T17:30:00Z",
+ "notes": "ClearTV service adapter config, built into the app. Changes ship as a new app version.",
+ "youtube": {
+  "api": "https://www.youtube.com/youtubei/v1/",
+  "tvClientName": "TVHTML5",
+  "tvClientVersion": "7.20261015.10.00",
+  "iosClientName": "IOS",
+  "iosClientVersion": "20.10.4",
+  "iosUserAgent": "com.google.ios.youtube/{v} (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
+  "oauthClientId": "861556708454-d6dlm3lh05idd8npek18k6be8ba3oc68.apps.googleusercontent.com",
+  "oauthClientSecret": "SboVhoG9s0rNafixCSGGKXAT",
+  "deviceCodeUrl": "https://www.youtube.com/o/oauth2/device/code",
+  "tokenUrl": "https://www.youtube.com/o/oauth2/token",
+  "oauthScope": "http://gdata.youtube.com https://www.googleapis.com/auth/youtube-paid-content",
+  "activateQr": "https://www.google.com/device?user_code={code}",
+  "capture": [
+   "shelfRenderer",
+   "nextContinuationData"
+  ],
+  "skip": [
+   "adSlotRenderer",
+   "inFeedAdLayoutRenderer",
+   "promotedSparklesWebRenderer",
+   "adSlotMetadata",
+   "menu",
+   "trackingParams",
+   "clickTrackingParams",
+   "loggingDirectives",
+   "loggingContext",
+   "onLongPress",
+   "onLongPressCommand",
+   "accessibility",
+   "accessibilityData",
+   "accessibilityContext",
+   "commandMetadata",
+   "onFocusCommand",
+   "reelPlayerOverlayRenderer",
+   "itemPlayback",
+   "watchEndpointSupportedOnesieConfig",
+   "frameworkUpdates",
+   "responseContext",
+   "topbar",
+   "engagementPanels",
+   "playerOverlays"
+  ],
+  "probe": {
+   "browse": "FEtopics_music",
+   "search": "news",
+   "video": "jNQXAC9e7gk"
+  }
+ },
+ "tubi": {
+  "account": "https://account.production-public.tubi.io",
+  "tensor": "https://tensor-cdn.production-public.tubi.io",
+  "content": "https://content-cdn.production-public.tubi.io",
+  "search": "https://search.production-public.tubi.io",
+  "platform": "web",
+  "activateUrl": "tubitv.com/activate",
+  "activateQr": "https://tubitv.com/activate",
+  "children": [
+   "containers",
+   "contents"
+  ],
+  "skip": [
+   "video_resources",
+   "gn_fields",
+   "tubi_fields",
+   "imdb_fields",
+   "video_metadata",
+   "trailers",
+   "video_previews",
+   "awards",
+   "rt_fields",
+   "credit_cuepoints",
+   "subtitles",
+   "schedule_data",
+   "monetization",
+   "video_renditions",
+   "hero_images",
+   "backgrounds",
+   "internal_tags",
+   "ui_customization",
+   "policy_match",
+   "competitors",
+   "teams",
+   "league",
+   "vibes"
+  ],
+  "cuepoints": {
+   "field": "credit_cuepoints",
+   "introStart": "intro_start",
+   "introEnd": "intro_end",
+   "credits": [
+    "earlycredits_start",
+    "postlude"
+   ]
+  },
+  "probe": {
+   "search": "comedy"
+  },
+  "adCuePoints": {
+   "field": "monetization",
+   "key": "cue_points"
+  }
+ },
+ "prime": {
+  "base": "https://www.primevideo.com",
+  "hydrationMarker": "id=\"dv-web-page-hydration-data\"",
+  "containers": [
+   "containers"
+  ],
+  "skip": [
+   "overflowMenu",
+   "watchlistAction",
+   "impressionData",
+   "itemAnalytics",
+   "customerReviews",
+   "modelDebug",
+   "station",
+   "playbackAction",
+   "playbackActions",
+   "buyBoxActions",
+   "hoverInfo",
+   "degradations",
+   "strings",
+   "inlineContainerUpdateActions",
+   "journeyIngressContext",
+   "paginationServiceToken",
+   "featureSwitches",
+   "requestFeatureSwitches",
+   "clickstreamPageParams",
+   "resiliencyMetadata",
+   "swiftPageParameters",
+   "sitewide",
+   "audioTracks",
+   "subtitles",
+   "enhancedSubtitles",
+   "contributors",
+   "reviews",
+   "playbackTracks",
+   "refund",
+   "imdb",
+   "buyBox",
+   "creative",
+   "banner",
+   "notification",
+   "restriction",
+   "extras",
+   "tokens",
+   "recordings",
+   "bundlesContent",
+   "otherFormats",
+   "widgets",
+   "termsText",
+   "bottomMenu",
+   "metadata",
+   "pageContext",
+   "action",
+   "asins"
+  ],
+  "detailKeys": [
+   "detail",
+   "self",
+   "watchlist",
+   "action",
+   "seasons",
+   "episodeList",
+   "containers"
+  ],
+  "detailKeep": [
+   "action",
+   "metadata"
+  ],
+  "detailSkip": [
+   "contributors",
+   "reviews",
+   "audioTracks",
+   "subtitles",
+   "enhancedSubtitles",
+   "playbackEnvelope",
+   "correlationId",
+   "studios",
+   "autoplayTrailerHero",
+   "bottomBar",
+   "pageContext",
+   "reactionAction",
+   "otherFormats"
+  ],
+  "skipButton": ".atvwebplayersdk-skipelement-button,[class*=skipelement] button",
+  "probe": {
+   "detail": "/detail/0J1DW15U5F8I6MR5750BWMO6Y1"
+  }
+ },
+ "pluto": {
+  "channels": "https://service-channels.clusters.pluto.tv/v2/guide/",
+  "boot": "https://boot.pluto.tv/v4/start",
+  "appName": "web",
+  "appVersion": "9.6.0",
+  "deviceVersion": "120.0.0"
+ }
+}

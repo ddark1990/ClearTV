@@ -1,0 +1,48 @@
+{
+  "format": "cleartv-theme",
+  "version": 1,
+  "id": "terminal",
+  "name": "Terminal",
+  "author": "ClearTV examples",
+  "colors": {
+    "background": "#050805",
+    "backgroundDeep": "#000000",
+    "panel": "#0B140B",
+    "surface": "#143014",
+    "line": "#1F5A1F",
+    "text": "#B6FFB0",
+    "textMuted": "#7CE07A",
+    "textSoft": "#4FA84F",
+    "accent": "#39FF14",
+    "good": "#39FF14",
+    "bad": "#FF5F56",
+    "warn": "#FFBD2E"
+  },
+  "font": {
+    "display": "mono",
+    "body": "mono",
+    "scale": 0.95
+  },
+  "shape": {
+    "radius": 0,
+    "focusRing": 2,
+    "focusScale": 1.0,
+    "cardOpacity": 100
+  },
+  "tiles": {
+    "size": 0.85
+  },
+  "layout": {
+    "engine": "classic",
+    "rowSpacing": 8,
+    "header": "compact",
+    "backdrop": "plain",
+    "servicesStyle": "cards",
+    "homeRows": [
+      "watchlist",
+      "continue",
+      "services"
+    ],
+    "serviceAccents": false
+  }
+}
