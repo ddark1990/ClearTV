@@ -4,6 +4,11 @@ What changed in each ClearTV version, newest first. ClearTV is made by [ddark199
 
 Download builds from [Releases](https://github.com/ddark1990/ClearTV/releases). Found a problem? Open an [issue](https://github.com/ddark1990/ClearTV/issues); for security problems see [SECURITY.md](SECURITY.md).
 
+## 0.1.21 (2026-10-22)
+
+- The "Up next" card at the end of an episode (and the Skip intro button, which uses the same spot) now sits closer to the right edge of the screen.
+- The Up next card has an **Autoplay** switch: press down (or right) to reach it and OK to turn Autoplay next on or off. Turned on, the next episode starts after a 10 second countdown, even if the card was already waiting at the end; turned off, the countdown stops and the card waits for OK. It is the same setting as Settings > Autoplay next (still off unless you turn it on). OK on Play now and BACK work as before. Works in every service that shows the card.
+
 ## 0.1.20 (2026-10-21)
 
 - If live TV or a video freezes because the stream stopped arriving, ClearTV now notices within about 10 seconds and reloads it by itself, the same as changing the channel and back. If it keeps freezing it tries a few more times with longer waits, then tells you instead of looping.

@@ -81,6 +81,11 @@ public final class PlayerChrome {
     private int countdown = -1;
     private final LinearLayout nextCard;
     private final TextView nextLine, nextCount;
+    /** The card's two remote targets: play now (0) and the Autoplay next switch (1); OK acts on the focused one. */
+    private final TextView playChip, autoChip;
+    private int nextFocus;
+    /** A direction key whose press moved the card's focus: its release is swallowed too. */
+    private int nextKeyHeld = -1;
     private Runnable progressSink;
     private long lastProgress;
     private static final int COUNTDOWN_S = 10;
@@ -186,7 +191,7 @@ public final class PlayerChrome {
         skipChip.setBackground(sk);
         skipChip.setVisibility(View.GONE);
         FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.END);
-        slp.setMargins(0, 0, Ui.dp(c, Ui.SAFE_X), Ui.dp(c, Ui.SAFE_Y + 120));
+        slp.setMargins(0, 0, Ui.dp(c, 16), Ui.dp(c, Ui.SAFE_Y + 120));
         root.addView(skipChip, slp);
 
         nextCard = new LinearLayout(c);
@@ -198,11 +203,24 @@ public final class PlayerChrome {
         nextCard.addView(Ui.oneLine(Ui.kicker(c, "Up next", 11, accent)));
         nextLine = Ui.oneLine(Ui.text(c, "", 18, Ui.V_TEXT));
         nextCard.addView(nextLine, Ui.below(c, Ui.S_HALF));
+        LinearLayout nextRow = new LinearLayout(c);
+        nextRow.setOrientation(LinearLayout.HORIZONTAL);
+        playChip = Ui.oneLine(Ui.kicker(c, "Play now", 12, Ui.V_TEXT));
+        autoChip = Ui.oneLine(Ui.kicker(c, "", 12, Ui.V_TEXT));
+        // focus between the two is kept here (dispatch), not by Android, so a web player's page never loses it
+        for (TextView t : new TextView[]{playChip, autoChip}) {
+            t.setPadding(Ui.dp(c, Ui.S2), Ui.dp(c, Ui.S1), Ui.dp(c, Ui.S2), Ui.dp(c, Ui.S1));
+        }
+        nextRow.addView(playChip);
+        LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        alp.leftMargin = Ui.dp(c, Ui.S1);
+        nextRow.addView(autoChip, alp);
+        nextCard.addView(nextRow, Ui.below(c, Ui.S1));
         nextCount = Ui.oneLine(Ui.kicker(c, "", 11, Ui.V_MUTED));
         nextCard.addView(nextCount, Ui.below(c, Ui.S1));
         nextCard.setVisibility(View.GONE);
-        FrameLayout.LayoutParams nlp = new FrameLayout.LayoutParams(Ui.dp(c, 420), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.END);
-        nlp.setMargins(0, 0, Ui.dp(c, Ui.SAFE_X), Ui.dp(c, Ui.SAFE_Y + 120));
+        FrameLayout.LayoutParams nlp = new FrameLayout.LayoutParams(Ui.dp(c, 520), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.END);
+        nlp.setMargins(0, 0, Ui.dp(c, 16), Ui.dp(c, Ui.SAFE_Y + 120));
         root.addView(nextCard, nlp);
         panel = new Panel(c, root);
         main.postDelayed(watch, 1000);
@@ -265,6 +283,7 @@ public final class PlayerChrome {
 
     private void playNext() {
         if (nextGo == null) return;
+        countdown = -1;
         nextCard.setVisibility(View.GONE);
         saveProgress();
         Runnable go = nextGo;
@@ -273,9 +292,36 @@ public final class PlayerChrome {
     }
 
     private void showNextCard(boolean counting) {
+        if (!countdownVisible()) nextFocus = 0; // a fresh card starts on play now
         nextLine.setText(nextTitle);
-        nextCount.setText(((counting ? "Starts in " + countdown + " s   ·   " : "") + "OK play now   ·   BACK cancel").toUpperCase(Locale.ROOT));
+        String keys = nextFocus == 0 ? "OK play now · ↓ autoplay · BACK cancel" : "OK switch · ↑ play now · BACK cancel";
+        nextCount.setText(((counting ? "Starts in " + countdown + " s · " : "") + keys).toUpperCase(Locale.ROOT));
+        autoChip.setText(autoplayNext(c) ? "AUTOPLAY: ON" : "AUTOPLAY: OFF");
+        styleChip(playChip, nextFocus == 0);
+        styleChip(autoChip, nextFocus == 1);
         nextCard.setVisibility(View.VISIBLE);
+    }
+
+    /** The card's chips look like the skip chip (accent stroke); the focused one is filled with the accent. */
+    private void styleChip(TextView t, boolean focused) {
+        GradientDrawable g = Ui.rounded(focused ? accent : 0xE6060809, Ui.dp(c, Ui.PILL + 6));
+        g.setStroke(Ui.dp(c, 2), accent);
+        t.setBackground(g);
+        // dark text on a light accent (Tubi's yellow, Pluto's), as on the CC chip
+        boolean light = (((accent >> 16 & 0xFF) * 299 + (accent >> 8 & 0xFF) * 587 + (accent & 0xFF) * 114) / 1000) > 150;
+        t.setTextColor(focused && light ? 0xFF060809 : Ui.V_TEXT);
+    }
+
+    /**
+     * OK on the card's Autoplay switch: the same saved setting as Settings > Autoplay next. On, the 10 s countdown
+     * starts at once (also while the card waits at the end) and then plays next; off, the countdown stops and the
+     * card waits for OK.
+     */
+    private void toggleAutoplay() {
+        boolean on = !autoplayNext(c);
+        setAutoplayNext(c, on);
+        countdown = on ? COUNTDOWN_S : -1;
+        showNextCard(on);
     }
 
     private boolean skipVisible() {
@@ -300,12 +346,20 @@ public final class PlayerChrome {
             skipChip.setVisibility(View.GONE);
         }
         // the next-episode countdown: from the end credits, else the last 10 s
-        if (nextGo != null && !nextCancelled && !target.isLive() && dur > 0) {
+        if (ended && nextGo != null && !nextCancelled) {
+            // waiting on the card after the end; Autoplay switched on there counts down, then plays next
+            if (countdown >= 0 && autoplayNext(c)) {
+                countdown--;
+                if (countdown <= 0) {
+                    playNext();
+                    return;
+                }
+                showNextCard(true);
+            }
+        } else if (nextGo != null && !nextCancelled && !target.isLive() && dur > 0) {
             long startAt = credits > 0 && credits < dur ? credits : dur - COUNTDOWN_S * 1000L;
             boolean auto = autoplayNext(c);
-            if (ended) {
-                // waiting on the card after the end
-            } else if (pos >= startAt && playing && auto) {
+            if (pos >= startAt && playing && auto) {
                 if (countdown < 0) countdown = COUNTDOWN_S;
                 else countdown--;
                 if (countdown <= 0) {
@@ -314,6 +368,7 @@ public final class PlayerChrome {
                 }
                 showNextCard(true);
             } else if (pos >= startAt && playing) {
+                countdown = -1;
                 showNextCard(false);
             } else if (pos < startAt) {
                 countdown = -1;
@@ -507,7 +562,23 @@ public final class PlayerChrome {
         }
         if (countdownVisible()) {
             if (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER) {
-                if (down && ev.getRepeatCount() == 0) playNext();
+                if (down && ev.getRepeatCount() == 0) {
+                    if (nextFocus == 1) toggleAutoplay();
+                    else playNext();
+                }
+                return true;
+            }
+            // down/right: to the Autoplay switch; up/left: back to play now (from play now they keep their usual meaning)
+            boolean toAuto = code == KeyEvent.KEYCODE_DPAD_DOWN || code == KeyEvent.KEYCODE_DPAD_RIGHT;
+            boolean toPlay = code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_LEFT;
+            if (toAuto || (toPlay && (nextFocus == 1 || nextKeyHeld == code))) {
+                if (down) {
+                    nextFocus = toAuto ? 1 : 0;
+                    nextKeyHeld = code;
+                    showNextCard(countdown >= 0 && autoplayNext(c));
+                } else if (up) {
+                    nextKeyHeld = -1;
+                }
                 return true;
             }
             if (code == KeyEvent.KEYCODE_BACK) {
