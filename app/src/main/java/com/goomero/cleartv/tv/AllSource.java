@@ -105,6 +105,16 @@ final class AllSource extends Source {
         return Source.create(app, item.service).play(item);
     }
 
+    @Override
+    public ChapterList chapters(Item item) throws IOException {
+        if (item.service == null || item.service.isEmpty() || item.service.equals(id())) return null;
+        try {
+            return Source.create(app, item.service).chapters(item);
+        } catch (IllegalArgumentException e) {
+            return null; // Pluto TV has no native source (and no chapters)
+        }
+    }
+
     @Override public int signInKind() { return SIGNIN_NONE; }
 
     @Override public boolean signedIn() { return false; }

@@ -66,6 +66,7 @@ public final class ShelfView extends View {
     private final TextPaint badge = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final RectF r = new RectF();
     private final Rect src = new Rect();
+    private final android.graphics.Path clip = new android.graphics.Path();
 
     public ShelfView(Context c) {
         super(c);
@@ -470,6 +471,19 @@ public final class ShelfView extends View {
             title.setColor(Ui.SOFT);
             CharSequence t = TextUtils.ellipsize(it.title, title, r.width() - pad * 2, TextUtils.TruncateAt.END);
             cv.drawText(t, 0, t.length(), r.left + pad, r.centerY() + title.getTextSize() / 3f, title);
+        }
+        if (it.progress > 0) {
+            // how far it was watched, like the cards of home's Continue watching row
+            float h = Ui.dp(getContext(), 4);
+            cv.save();
+            clip.reset();
+            clip.addRoundRect(r, radius, radius, android.graphics.Path.Direction.CW);
+            cv.clipPath(clip);
+            fill.setColor(0x99000000);
+            cv.drawRect(r.left, r.bottom - h, r.right, r.bottom, fill);
+            fill.setColor(accent);
+            cv.drawRect(r.left, r.bottom - h, r.left + r.width() * Math.max(0.03f, Math.min(1f, it.progress)), r.bottom, fill);
+            cv.restore();
         }
         if (!it.badge.isEmpty()) {
             float bw = badge.measureText(it.badge) + pad;

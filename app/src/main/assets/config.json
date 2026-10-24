@@ -1,7 +1,7 @@
 {
  "schema": 1,
- "version": 1,
- "published": "2026-10-17T17:30:00Z",
+ "version": 2,
+ "published": "2026-10-24T04:30:00Z",
  "notes": "ClearTV service adapter config, built into the app. Changes ship as a new app version.",
  "youtube": {
   "api": "https://www.youtube.com/youtubei/v1/",
@@ -16,6 +16,17 @@
   "tokenUrl": "https://www.youtube.com/o/oauth2/token",
   "oauthScope": "http://gdata.youtube.com https://www.googleapis.com/auth/youtube-paid-content",
   "activateQr": "https://www.google.com/device?user_code={code}",
+  "webClientVersion": "2.20261015.00.00",
+  "chapters": {
+   "capture": [
+    "multiMarkersPlayerBarRenderer",
+    "videoSecondaryInfoRenderer"
+   ],
+   "markerKeys": [
+    "DESCRIPTION_CHAPTERS",
+    "AUTO_CHAPTERS"
+   ]
+  },
   "capture": [
    "shelfRenderer",
    "nextContinuationData"

@@ -151,7 +151,36 @@ public final class Launcher {
                 }
             });
         }
+        loadChapters(a, chrome, item, serviceId);
         return in.getLongExtra(EXTRA_RESUME, 0);
+    }
+
+    /**
+     * The title's chapters, asked of its service in the background once the player is up (playback never waits
+     * for them); the chapter bar and Skip sponsor appear when they arrive. Services without chapters answer null.
+     */
+    private static void loadChapters(final Activity a, final PlayerChrome chrome, final Item item, final String serviceId) {
+        if (item == null || item.kind == Item.LIVE || serviceId == null || serviceId.isEmpty()) return;
+        IO.execute(new Runnable() {
+            @Override
+            public void run() {
+                final ChapterList list;
+                try {
+                    list = Source.create(a, serviceId).chapters(item);
+                } catch (IllegalArgumentException | IOException e) {
+                    Log.i(TAG, "chapters " + item.id + ": " + e.getMessage());
+                    return;
+                }
+                Log.i(TAG, "chapters " + item.id + ": " + (list == null ? "none" : list.toString()));
+                if (list == null) return;
+                MAIN.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!a.isFinishing() && !a.isDestroyed()) chrome.setChapters(list);
+                    }
+                });
+            }
+        });
     }
 
     /** "23:14" or "1:02:05". */

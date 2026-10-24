@@ -89,6 +89,8 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
     private int selectedNav = -1;
     private String navTitle = "";
     private Item.Page current;
+    /** The Continue watching row put on top of the first section, or null when there is none. */
+    private volatile Item.Shelf continueRow;
     private final ArrayList<PageState> stack = new ArrayList<>();
     private boolean loadingMore;
     private int generation; // bumps on every navigation so late answers for an old page are dropped
@@ -506,7 +508,7 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
                 // the section chosen now: selectedNav may already be -1 (search opened) when this runs
                 Item.Page p = source.load(nav);
                 if (first) PageCache.put(ServiceActivity.this, source.id(), p);
-                return p;
+                return first ? withContinue(p) : p;
             }
         }, false);
         // the first section opens instantly from the copy saved last time (or preloaded at start); the fresh
@@ -515,9 +517,76 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
             Item.Page cached = PageCache.get(this, source.id());
             if (cached != null && !cached.isEmpty()) {
                 showingCache = true;
-                show(cached, null, 0, 0);
+                show(withContinue(cached), null, 0, 0);
             }
         }
+    }
+
+    /**
+     * The first section with this service's Continue watching row on top: the same saved progress as home's row
+     * (ClearTV's own first, then the signed-in account's history), only this service's titles. The page itself
+     * (and the copy PageCache keeps) stays without it, so the row is always fresh.
+     */
+    private Item.Page withContinue(Item.Page raw) {
+        Item.Shelf row = continueShelf();
+        continueRow = row;
+        if (raw == null || row == null) return raw;
+        Item.Page p = new Item.Page();
+        p.shelves.add(row);
+        p.shelves.addAll(raw.shelves);
+        p.more = raw.more;
+        p.moreExtendsGrid = raw.moreExtendsGrid;
+        p.empty = raw.empty;
+        p.detail = raw.detail;
+        p.seasons.addAll(raw.seasons);
+        p.season = raw.season;
+        p.grid = raw.grid >= 0 ? raw.grid + 1 : -1;
+        return p;
+    }
+
+    private Item.Shelf continueShelf() {
+        String svc = source.id();
+        if (svc.equals("all")) return null;
+        List<Item> items = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (Library.Entry e : Library.continueWatching(this)) {
+            if (!e.service.equals(svc) || !seen.add(e.item.id)) continue;
+            e.item.progress = e.progress();
+            items.add(e.item);
+        }
+        int n = 0;
+        for (Item it : Library.history(this, svc)) {
+            if (n++ >= 6 || items.size() >= Library.MAX_PROGRESS) break;
+            if (seen.add(it.id)) items.add(it);
+        }
+        return items.isEmpty() ? null : new Item.Shelf("Continue watching", items);
+    }
+
+    /** Back from the player on the first section: the Continue watching row shows the new position. */
+    @Override
+    protected void onRestart() {
+        super.onRestart();
+        refreshContinue();
+    }
+
+    /** Rebuilds the Continue watching row of the first section when it is on screen. */
+    private void refreshContinue() {
+        Item.Page p = current;
+        if (p == null || selectedNav != 0 || !stack.isEmpty() || p.detail != null) return;
+        Item.Shelf old = continueRow;
+        boolean had = old != null && !p.shelves.isEmpty() && p.shelves.get(0) == old;
+        Item.Shelf row = continueShelf();
+        if (!had && row == null) return;
+        int fr = shelf.focusRow(), fc = shelf.focusCol();
+        if (had) p.shelves.remove(0);
+        if (row != null) p.shelves.add(0, row);
+        int delta = (row != null ? 1 : 0) - (had ? 1 : 0);
+        if (p.grid >= 0) p.grid += delta;
+        continueRow = row;
+        // the row on top: focus stays on it (first tile, the title just watched); else on the same tile below
+        if (had && fr == 0) fc = 0;
+        else fr = Math.max(0, fr + delta);
+        shelf.setPage(p, fr, fc);
     }
 
     /** The page on screen is the saved copy; the live one replaces it keeping the focus. */
@@ -1072,7 +1141,9 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
     private void play(final Item it) {
         final long pressed = android.os.SystemClock.uptimeMillis();
         if (it.kind == Item.LIVE) LiveLists.watched(this, source.id(), it);
-        final java.util.List<Item> queue = Launcher.after(shelfOf(it), it);
+        // Continue watching is a mix of unrelated titles: nothing from it plays next
+        Item.Shelf from = shelfOf(it);
+        final java.util.List<Item> queue = Launcher.after(from != null && from == continueRow ? null : from, it);
         long saved = it.kind == Item.LIVE ? 0 : Library.resumeAt(this, source.id(), it.id);
         if (saved <= 0) {
             Toast.makeText(this, "Opening " + (it.title.isEmpty() ? "video" : it.title) + "…", Toast.LENGTH_SHORT).show();
@@ -1323,6 +1394,8 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
             crumb.setText((source.name() + " · " + ps.title).toUpperCase(Locale.ROOT));
             if (stack.isEmpty() && selectedNav < 0) searchBox.setVisibility(View.VISIBLE); // back to the results
             show(ps.page, null, ps.row, ps.col);
+            // back from a title page opened from the first section: what was just watched is on top
+            if (stack.isEmpty()) refreshContinue();
             shelf.requestFocus();
             return;
         }

@@ -54,6 +54,9 @@ final class YouTubeSource extends Source {
                 DEVICE_CODE_URL = Config.s("youtube.deviceCodeUrl", "https://www.youtube.com/o/oauth2/device/code");
                 TOKEN_URL = Config.s("youtube.tokenUrl", "https://www.youtube.com/o/oauth2/token");
                 SCOPE = Config.s("youtube.oauthScope", "http://gdata.youtube.com https://www.googleapis.com/auth/youtube-paid-content");
+                WEB_VERSION = Config.s("youtube.webClientVersion", "2.20261015.00.00");
+                CHAPTER_CAPTURE = Config.set("youtube.chapters.capture", "multiMarkersPlayerBarRenderer", "videoSecondaryInfoRenderer");
+                CHAPTER_KEYS = Config.list("youtube.chapters.markerKeys", "DESCRIPTION_CHAPTERS", "AUTO_CHAPTERS");
                 CAPTURE = Config.set("youtube.capture", "shelfRenderer", "nextContinuationData");
                 // ads (the only thing removed from the answers) and keys a tile does not need
                 SKIP = Config.set("youtube.skip", "adSlotRenderer", "inFeedAdLayoutRenderer", "promotedSparklesWebRenderer",
@@ -463,7 +466,68 @@ final class YouTubeSource extends Source {
         }
     }
 
-    private static final String WEB_VERSION = "2.20261015.00.00";
+    private static volatile String WEB_VERSION;
+    /** Where the web watch data keeps the chapters (the player bar markers, the description) and which marker lists count. */
+    private static volatile Set<String> CHAPTER_CAPTURE;
+    private static volatile String[] CHAPTER_KEYS;
+
+    /** Keys the chapter read never builds (the answer is ~0.5-1 MB; only two small objects are kept). */
+    private static final Set<String> CHAPTER_SKIP = new HashSet<>(Arrays.asList("frameworkUpdates", "responseContext",
+            "engagementPanels", "trackingParams", "clickTrackingParams", "loggingDirectives", "commandMetadata",
+            "accessibility", "accessibilityData", "thumbnail", "thumbnails", "secondaryResults", "menu", "onTap"));
+
+    /**
+     * The video's chapters from the web watch data ("next", signed out, the same call as {@link #channelOf}): the
+     * player bar's chapter markers (the creator's description chapters first, else YouTube's automatic ones),
+     * else a timestamp list in the description. Null for a video without chapters.
+     */
+    @Override
+    public ChapterList chapters(Item it) throws IOException {
+        if (it == null || it.kind == Item.LIVE || !it.id.matches("[A-Za-z0-9_-]{11}")) return null;
+        final java.util.Map<String, ChapterList> markers = new HashMap<>();
+        final String[] desc = {null};
+        try {
+            JSONObject client = new JSONObject().put("clientName", "WEB").put("clientVersion", WEB_VERSION).put("hl", "en").put("gl", "US");
+            JSONObject nb = new JSONObject().put("videoId", it.id).put("context", new JSONObject().put("client", client));
+            Map<String, String> h = new HashMap<>();
+            h.put("User-Agent", Http.DESKTOP_UA);
+            h.put("Origin", "https://www.youtube.com");
+            try (Http.Response r = Http.open(API + "next?prettyPrint=false", h, nb.toString().getBytes(StandardCharsets.UTF_8),
+                    "application/json", true)) {
+                JsonReader jr = new JsonReader(new InputStreamReader(r.body, StandardCharsets.UTF_8));
+                JsonScan.scan(jr, CHAPTER_CAPTURE, NONE, CHAPTER_SKIP, new JsonScan.Sink() {
+                    @Override
+                    public void onValue(String key, String name, JSONObject v) {
+                        JSONArray map = v.optJSONArray("markersMap");
+                        if (map != null) {
+                            for (int i = 0; i < map.length(); i++) {
+                                JSONObject e = map.optJSONObject(i);
+                                if (e == null) continue;
+                                JSONArray chs = JsonScan.path(e, "value") == null ? null : e.optJSONObject("value").optJSONArray("chapters");
+                                if (chs == null) continue;
+                                List<Long> st = new ArrayList<>();
+                                List<String> ti = new ArrayList<>();
+                                for (int k = 0; k < chs.length(); k++) {
+                                    JSONObject cr = JsonScan.path(chs.optJSONObject(k), "chapterRenderer");
+                                    if (cr == null) continue;
+                                    st.add(cr.optLong("timeRangeStartMillis", -1));
+                                    ti.add(JsonScan.text(cr.optJSONObject("title")));
+                                }
+                                ChapterList l = ChapterList.of(st, ti);
+                                if (l != null) markers.put(e.optString("key", ""), l);
+                            }
+                        }
+                        JSONObject ad = v.optJSONObject("attributedDescription");
+                        if (ad != null && desc[0] == null) desc[0] = ad.optString("content", null);
+                    }
+                });
+            }
+        } catch (JSONException e) {
+            throw new IOException("YouTube sent an unreadable video answer");
+        }
+        for (String k : CHAPTER_KEYS) if (markers.containsKey(k)) return markers.get(k);
+        return ChapterList.fromText(desc[0]);
+    }
 
     private static Item channelTile(String id, String name) {
         return new Item(Item.CHANNEL, id, name.isEmpty() ? "Channel" : name, "", "", "", "");

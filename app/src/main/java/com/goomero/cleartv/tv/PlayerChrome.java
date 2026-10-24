@@ -1,9 +1,13 @@
 package com.goomero.cleartv.tv;
 
 import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -16,7 +20,9 @@ import com.goomero.cleartv.Panel;
 import com.goomero.cleartv.Ui;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Locale;
 
 /**
@@ -29,6 +35,9 @@ import java.util.Locale;
  * <li>Up/down (and MENU) open the options: quality, captions, whatever the player adds.</li>
  * <li>Any key shows the overlay; it hides after 4 s without input. BACK closes the options, then the overlay,
  * then leaves.</li>
+ * <li>A title with chapters ({@link #setChapters}, any service) gets a segmented bar, the current chapter's name
+ * (the target's while scrubbing) and Skip sponsor in chapters named as a sponsor or ad read; with Settings >
+ * Auto-skip sponsor chapters on, those are skipped by themselves, once each.</li>
  * </ul>
  * The player supplies a {@link Target}; the web players implement it with JavaScript so the page's own focus
  * never sees the remote.
@@ -55,6 +64,9 @@ public final class PlayerChrome {
     }
 
     private static final long HIDE_MS = 4000;
+    private static final String TAG = "CTV.Chapters";
+    /** Skip sponsor lands this much before the next chapter's start. */
+    private static final long SEEK_EARLY_MS = 500;
     private final Context c;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Target target;
@@ -74,6 +86,24 @@ public final class PlayerChrome {
     private String extSkipLabel;
     private Runnable extSkip;
     private final TextView skipChip;
+    /** What OK on the skip chip does: the page's button, the intro markers or the sponsor chapter. */
+    private static final int SKIP_EXT = 1, SKIP_INTRO = 2, SKIP_SPONSOR = 3;
+    private int skipKind;
+    /** Chapters (null: none, the plain bar); the sponsor chapter the chip is for; chapters never auto-skipped again. */
+    private ChapterList chapters;
+    private int sponsorAt = -1;
+    private final Set<Integer> noAutoSkip = new HashSet<>();
+    /** The chapter just skipped and when (uptime): the web players' clock can report the old position for a tick. */
+    private int skippedChapter = -1;
+    private long skippedAt;
+    private final ChapterBar chapterBar;
+    private final TextView chapterLine, skipNote;
+    private final Runnable hideNote = new Runnable() {
+        @Override
+        public void run() {
+            skipNote.setVisibility(View.GONE);
+        }
+    };
     /** Auto-play next: the next title and how to start it; the countdown card. */
     private String nextTitle;
     private Runnable nextGo;
@@ -139,6 +169,10 @@ public final class PlayerChrome {
         overlay.addView(Ui.oneLine(title), Ui.below(c, Ui.S_HALF));
         sub = Ui.oneLine(Ui.text(c, "", 14, Ui.V_MUTED));
         overlay.addView(sub, Ui.below(c, Ui.S_HALF));
+        // the current chapter (the scrub target's while scrubbing); only for titles with chapters
+        chapterLine = Ui.oneLine(Ui.text(c, "", 15, Ui.V_TEXT));
+        chapterLine.setVisibility(View.GONE);
+        overlay.addView(chapterLine, Ui.below(c, Ui.S1));
         track = new FrameLayout(c);
         track.setBackground(Ui.rounded(Ui.V_LINE, Ui.dp(c, 2)));
         progress = new View(c);
@@ -146,6 +180,10 @@ public final class PlayerChrome {
         progress.setPivotX(0);
         progress.setScaleX(0f);
         track.addView(progress, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // with chapters the bar is drawn as segments instead (the plain track and fill are hidden)
+        chapterBar = new ChapterBar(c, accent);
+        chapterBar.setVisibility(View.GONE);
+        track.addView(chapterBar, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         scrubMark = new View(c);
         scrubMark.setBackground(Ui.rounded(Ui.V_TEXT, Ui.dp(c, 2)));
         scrubMark.setVisibility(View.GONE);
@@ -193,6 +231,16 @@ public final class PlayerChrome {
         FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.END);
         slp.setMargins(0, 0, Ui.dp(c, 16), Ui.dp(c, Ui.SAFE_Y + 120));
         root.addView(skipChip, slp);
+        // "Skipped sponsor": a short note in the chip's spot and style after an automatic skip (OK does nothing)
+        skipNote = Ui.kicker(c, "Skipped sponsor", 14, Ui.V_TEXT);
+        skipNote.setPadding(Ui.dp(c, Ui.S3), Ui.dp(c, Ui.S1 + 2), Ui.dp(c, Ui.S3), Ui.dp(c, Ui.S1 + 2));
+        GradientDrawable sn = Ui.rounded(0xE6060809, Ui.dp(c, Ui.PILL + 6));
+        sn.setStroke(Ui.dp(c, 2), accent);
+        skipNote.setBackground(sn);
+        skipNote.setVisibility(View.GONE);
+        FrameLayout.LayoutParams nolp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.END);
+        nolp.setMargins(0, 0, Ui.dp(c, 16), Ui.dp(c, Ui.SAFE_Y + 120));
+        root.addView(skipNote, nolp);
 
         nextCard = new LinearLayout(c);
         nextCard.setOrientation(LinearLayout.VERTICAL);
@@ -237,6 +285,29 @@ public final class PlayerChrome {
     public void setExternalSkip(String label, Runnable action) {
         extSkipLabel = label;
         extSkip = action;
+    }
+
+    /**
+     * The title's chapters (any service; YouTube today), or null for none: the bar shows one segment per chapter,
+     * the controls name the current chapter, and sponsor chapters get Skip sponsor (or are skipped, see
+     * {@link #autoSkipSponsor}). Without chapters the controls look as they always did.
+     */
+    public void setChapters(ChapterList list) {
+        chapters = list;
+        sponsorAt = -1;
+        noAutoSkip.clear();
+        chapterBar.setChapters(list);
+        if (isShowing()) update();
+        else showChapters(false);
+    }
+
+    /** Settings switch "Auto-skip sponsor chapters" (off by default): off, a sponsor chapter shows Skip sponsor. */
+    public static boolean autoSkipSponsor(android.content.Context c) {
+        return c.getSharedPreferences("cleartv", android.content.Context.MODE_PRIVATE).getBoolean("auto_skip_sponsor", false);
+    }
+
+    public static void setAutoSkipSponsor(android.content.Context c, boolean on) {
+        c.getSharedPreferences("cleartv", android.content.Context.MODE_PRIVATE).edit().putBoolean("auto_skip_sponsor", on).apply();
     }
 
     /** The next episode and how to start it; null when there is none. */
@@ -337,8 +408,25 @@ public final class PlayerChrome {
         boolean playing = target.isPlaying();
         // skip intro: the page's own button, else inside the service's intro markers
         String label = null;
-        if (extSkip != null && extSkipLabel != null) label = extSkipLabel;
-        else if (introEnd > introStart && pos >= introStart && pos < introEnd - 1000) label = "Skip intro";
+        skipKind = 0;
+        if (extSkip != null && extSkipLabel != null) {
+            label = extSkipLabel;
+            skipKind = SKIP_EXT;
+        } else if (introEnd > introStart && pos >= introStart && pos < introEnd - 1000) {
+            label = "Skip intro";
+            skipKind = SKIP_INTRO;
+        } else {
+            // a sponsor chapter: skipped by itself once with the setting on (while playing, not mid-scrub), else the chip
+            int sp = sponsorChapter(pos, dur);
+            if (sp == skippedChapter && android.os.SystemClock.uptimeMillis() - skippedAt < 2500) sp = -1;
+            sponsorAt = sp;
+            if (sp >= 0 && playing && scrubTo < 0 && !noAutoSkip.contains(sp) && autoSkipSponsor(c)) {
+                skipSponsor(sp, true);
+            } else if (sp >= 0 && !countdownVisible()) {
+                label = "Skip sponsor";
+                skipKind = SKIP_SPONSOR;
+            }
+        }
         if (label != null && !panel.isShowing()) {
             skipChip.setText((label + "  ▸ OK").toUpperCase(Locale.ROOT));
             skipChip.setVisibility(View.VISIBLE);
@@ -382,7 +470,61 @@ public final class PlayerChrome {
         }
     }
 
+    /** The sponsor chapter playing at {@code pos} (not in its last second), or -1. */
+    private int sponsorChapter(long pos, long dur) {
+        if (chapters == null || dur <= 0 || target.isLive()) return -1;
+        int i = chapters.indexAt(pos);
+        if (!chapters.isSponsor(i) || pos >= chapters.end(i, dur) - 1000) return -1;
+        return i;
+    }
+
+    /**
+     * Past sponsor chapter {@code i}: to the next chapter's start, or the end for the last chapter. A chapter is
+     * skipped automatically only once; after that (or after seeking back into it) it shows the chip.
+     */
+    private void skipSponsor(int i, boolean auto) {
+        long dur = target.durationMs();
+        noAutoSkip.add(i);
+        skippedChapter = i;
+        skippedAt = android.os.SystemClock.uptimeMillis();
+        // an absolute time, never a step from the position: the next chapter's start (0.5 s early, for players that
+        // land on the next keyframe, but never before this chapter's start), or the end for the last chapter
+        final long from = target.positionMs();
+        long to = i + 1 < chapters.size() ? Math.max(chapters.start(i) + 1, chapters.start(i + 1) - SEEK_EARLY_MS)
+                : Math.max(0, dur - 1000);
+        target.seekTo(to);
+        Log.i(TAG, (auto ? "auto-skipped" : "skipped") + " sponsor chapter " + (i + 1) + "/" + chapters.size() + " from "
+                + fmtMs(from) + " to " + fmtMs(to) + " (next chapter starts " + (i + 1 < chapters.size() ? fmtMs(chapters.start(i + 1)) : "-") + ")");
+        main.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                Log.i(TAG, "after the sponsor skip the player is at " + fmtMs(target.positionMs()));
+            }
+        }, 2000);
+        skipChip.setVisibility(View.GONE);
+        sponsorAt = -1;
+        if (auto) {
+            skipNote.setVisibility(View.VISIBLE);
+            main.removeCallbacks(hideNote);
+            main.postDelayed(hideNote, 3000);
+        }
+        if (isShowing()) update();
+    }
+
+    /** A seek the viewer asked for: one that goes back into a sponsor chapter is never skipped automatically. */
+    private void userSeek(long to) {
+        if (chapters != null) {
+            int i = chapters.indexAt(to);
+            if (to < target.positionMs() && chapters.isSponsor(i)) noAutoSkip.add(i);
+        }
+        target.seekTo(to);
+    }
+
     private void doSkip() {
+        if (skipKind == SKIP_SPONSOR && sponsorAt >= 0 && chapters != null) {
+            skipSponsor(sponsorAt, false);
+            return;
+        }
         if (extSkip != null && extSkipLabel != null) {
             extSkip.run();
             extSkipLabel = null;
@@ -490,6 +632,7 @@ public final class PlayerChrome {
     public void update() {
         long pos = target.positionMs(), dur = target.durationMs();
         if (target.isLive() || dur <= 0) {
+            showChapters(false);
             time.setText("LIVE");
             progress.setScaleX(1f);
             scrubMark.setVisibility(View.GONE);
@@ -497,6 +640,19 @@ public final class PlayerChrome {
             return;
         }
         progress.setScaleX(Math.max(0f, Math.min(1f, pos / (float) dur)));
+        if (chapters != null) {
+            showChapters(true);
+            chapterBar.setPosition(pos / (float) dur, dur);
+            int at = chapters.indexAt(scrubTo >= 0 ? scrubTo : pos);
+            String line = "Chapter " + (at + 1) + " of " + chapters.size() + "  ·  ";
+            android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder((scrubTo >= 0 ? (scrubTo >= pos ? "▶▶ " : "◀◀ ") : "") + line);
+            sb.setSpan(new android.text.style.ForegroundColorSpan(accent), 0, sb.length(), 0);
+            int from = sb.length();
+            sb.append(chapters.title(at));
+            // while scrubbing the target chapter's name is in the accent too
+            if (scrubTo >= 0) sb.setSpan(new android.text.style.ForegroundColorSpan(accent), from, sb.length(), 0);
+            if (!sb.toString().contentEquals(chapterLine.getText())) chapterLine.setText(sb);
+        }
         time.setText(fmt(pos) + " / " + fmt(dur));
         if (scrubTo >= 0 && track.getWidth() > 0) {
             scrubMark.setVisibility(View.VISIBLE);
@@ -507,6 +663,75 @@ public final class PlayerChrome {
             scrubMark.setVisibility(View.GONE);
             scrubLabel.setText("");
         }
+    }
+
+    /** Segmented bar and chapter line on (a title with chapters and a duration), or the plain bar. */
+    private void showChapters(boolean on) {
+        on = on && chapters != null;
+        int v = on ? View.VISIBLE : View.GONE;
+        if (chapterBar.getVisibility() == v) return;
+        chapterBar.setVisibility(v);
+        chapterLine.setVisibility(v);
+        progress.setVisibility(on ? View.INVISIBLE : View.VISIBLE);
+        track.setBackground(on ? null : Ui.rounded(Ui.V_LINE, Ui.dp(c, 2)));
+    }
+
+    /**
+     * The progress bar of a title with chapters: one rounded segment per chapter with a small gap between them,
+     * filled with the accent up to the position. Drawn in one pass, no views per chapter.
+     */
+    private static final class ChapterBar extends View {
+        private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG), fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF r = new RectF();
+        private final float gap, radius;
+        private ChapterList list;
+        private long dur;
+        private float frac;
+
+        ChapterBar(Context c, int accent) {
+            super(c);
+            line.setColor(Ui.V_LINE);
+            fill.setColor(accent);
+            gap = Ui.dp(c, 4);
+            radius = Ui.dp(c, 2);
+        }
+
+        void setChapters(ChapterList l) {
+            list = l;
+            invalidate();
+        }
+
+        void setPosition(float f, long durationMs) {
+            f = Math.max(0f, Math.min(1f, f));
+            if (f == frac && durationMs == dur) return;
+            frac = f;
+            dur = durationMs;
+            invalidate();
+        }
+
+        @Override
+        protected void onDraw(Canvas cv) {
+            if (list == null || dur <= 0) return;
+            float w = getWidth(), h = getHeight(), px = w * frac;
+            int n = list.size();
+            for (int i = 0; i < n; i++) {
+                if (list.start(i) >= dur) break;
+                float x0 = w * list.start(i) / dur + (i > 0 ? gap / 2 : 0);
+                float x1 = w * Math.min(dur, list.end(i, dur)) / dur - (i < n - 1 ? gap / 2 : 0);
+                if (x1 - x0 < 1) continue;
+                r.set(x0, 0, x1, h);
+                cv.drawRoundRect(r, radius, radius, line);
+                if (px > x0) {
+                    r.set(x0, 0, Math.min(px, x1), h);
+                    cv.drawRoundRect(r, radius, radius, fill);
+                }
+            }
+        }
+    }
+
+    /** "2:07.000" for the log. */
+    private static String fmtMs(long ms) {
+        return fmt(ms) + String.format(Locale.ROOT, ".%03d", Math.max(0, ms) % 1000);
     }
 
     static String fmt(long ms) {
@@ -640,7 +865,7 @@ public final class PlayerChrome {
                 }
                 if (down) {
                     if (ev.getRepeatCount() == 0) {
-                        target.seekTo(clamp(target.positionMs() + dir * 10_000L));
+                        userSeek(clamp(target.positionMs() + dir * 10_000L));
                     } else {
                         // held: scrub a target, applied on release so the stream seeks once
                         if (scrubTo < 0) scrubTo = target.positionMs();
@@ -660,7 +885,7 @@ public final class PlayerChrome {
             case KeyEvent.KEYCODE_MEDIA_STEP_FORWARD: {
                 boolean fwd = code == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD || code == KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD
                         || code == KeyEvent.KEYCODE_MEDIA_STEP_FORWARD;
-                if (down && seekable()) target.seekTo(clamp(target.positionMs() + (fwd ? 1 : -1) * (ev.getRepeatCount() > 6 ? 60_000L : 30_000L)));
+                if (down && seekable()) userSeek(clamp(target.positionMs() + (fwd ? 1 : -1) * (ev.getRepeatCount() > 6 ? 60_000L : 30_000L)));
                 if (down) show();
                 return true;
             }
@@ -684,7 +909,7 @@ public final class PlayerChrome {
     private void commitScrub() {
         long to = scrubTo;
         scrubTo = -1;
-        if (to >= 0) target.seekTo(to);
+        if (to >= 0) userSeek(to);
         update();
     }
 

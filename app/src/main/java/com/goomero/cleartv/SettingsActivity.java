@@ -275,6 +275,16 @@ public final class SettingsActivity extends Activity {
             }
         });
         add(new Row() {
+            public String label() {
+                return "Auto-skip sponsor chapters"
+                        + "\nVideos with chapters (YouTube): chapters named as a sponsor or ad are skipped once; off shows a Skip sponsor button";
+            }
+            public String value() { return onOff(com.goomero.cleartv.tv.PlayerChrome.autoSkipSponsor(SettingsActivity.this)); }
+            public void onClick() {
+                com.goomero.cleartv.tv.PlayerChrome.setAutoSkipSponsor(SettingsActivity.this, !com.goomero.cleartv.tv.PlayerChrome.autoSkipSponsor(SettingsActivity.this));
+            }
+        });
+        add(new Row() {
             public String label() { return "Hover previews"; }
             public String value() { return onOff(com.goomero.cleartv.tv.HoverPreview.enabled(SettingsActivity.this)); }
             public void onClick() {

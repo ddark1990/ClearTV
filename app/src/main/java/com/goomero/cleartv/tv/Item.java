@@ -26,6 +26,8 @@ public final class Item {
      * series, a Prime Video show. Null when unknown (the service may still look it up, see Source.channelOf).
      */
     public Item channel;
+    /** Share already watched (0..1) on a Continue watching tile, drawn as a bar along the artwork; 0 for none. */
+    public float progress;
     /** Title and subtitle cut to the tile width (drawW), cached by ShelfView. */
     CharSequence drawTitle, drawSub;
     float drawW;

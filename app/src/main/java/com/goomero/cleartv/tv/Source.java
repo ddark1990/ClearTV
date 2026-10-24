@@ -125,6 +125,14 @@ public abstract class Source {
         return it.channel != null;
     }
 
+    /**
+     * The title's chapters for the player's chapter bar and Skip sponsor, or null when it has none or the service
+     * does not publish them (background thread; may ask the service). Only YouTube has chapters today.
+     */
+    public ChapterList chapters(Item it) throws IOException {
+        return null;
+    }
+
     /** The channel, creator, series or show page of a tile, or null (background thread; may ask the service). */
     public Item channelOf(Item it) throws IOException {
         return it.channel;

@@ -4,6 +4,13 @@ What changed in each ClearTV version, newest first. ClearTV is made by [ddark199
 
 Download builds from [Releases](https://github.com/ddark1990/ClearTV/releases). Found a problem? Open an [issue](https://github.com/ddark1990/ClearTV/issues); for security problems see [SECURITY.md](SECURITY.md).
 
+## 0.1.22 (2026-10-23)
+
+- YouTube videos with chapters now show them: the progress bar is split into one segment per chapter with a small gap between them, and the name of the current chapter appears above the bar. While you move through the video with left/right, the name of the chapter you would land in is shown instead. Videos without chapters (and other services) look exactly as before.
+- When a chapter is named as a sponsor or ad segment (for example "Sponsor", "Sponsored by", "Ad", "Advertisement", "Promo"), a **SKIP SPONSOR** button appears in the Skip intro spot. Press OK to jump to the start of the next chapter (or to the end if it is the last chapter). Words like "adventure" or "ad-free" do not count.
+- New setting **Auto-skip sponsor chapters** in Settings, right after Autoplay next (off unless you turn it on). When on, sponsor chapters are skipped by themselves with a short "Skipped sponsor" note. Each chapter is skipped only once, and if you go back into a sponsor chapter yourself it shows the Skip sponsor button instead of skipping again. Chapters come from the video itself; ClearTV uses no outside skip service.
+- Each service's own screen now starts with a **Continue watching** row (YouTube, Prime Video and Tubi), with only that service's titles and a bar showing how far you got. Picking a title offers to resume where you stopped, just like the home row. The row updates when you come back from watching. Pluto TV is live TV only, so it has nothing to resume and shows no row.
+
 ## 0.1.21 (2026-10-22)
 
 - The "Up next" card at the end of an episode (and the Skip intro button, which uses the same spot) now sits closer to the right edge of the screen.
