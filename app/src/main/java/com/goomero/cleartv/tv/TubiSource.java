@@ -272,11 +272,60 @@ final class TubiSource extends Source {
         return it != null && (it.kind == Item.VIDEO || it.kind == Item.SERIES) && !it.id.isEmpty();
     }
 
-    /** Tubi's own "You May Also Like" list for the title (an episode's: its series'). */
+    /**
+     * Tubi's own "You May Also Like" list for the title (an episode's: its series'), widened with the lists of its
+     * first few titles (fetched in parallel) so the grid reaches further than Tubi's ten; titles that several lists
+     * share rank first, and one tile per title (the source's own show at most twice, last).
+     */
     @Override
-    public Item.Page similar(Item it) throws IOException {
+    public Item.Page similar(final Item it) throws IOException {
+        long t0 = android.os.SystemClock.uptimeMillis();
         String id = it.kind == Item.VIDEO && it.channel != null && it.channel.kind == Item.SERIES && !it.channel.id.isEmpty()
                 ? it.channel.id : it.id;
+        List<Item> first = related(id);
+        Similar sim = new Similar(new Similar.Key() {
+            @Override
+            public String of(Item x) {
+                return Similar.titleKey(x.title);
+            }
+        });
+        sim.add(first, 1.0);
+        String self = Similar.titleKey(it.title);
+        List<String> seeds = new ArrayList<>();
+        for (Item x : first) {
+            if (seeds.size() >= Config.i("tubi.similar.seeds", 3)) break;
+            if (x.kind != Item.LIVE && !x.id.equals(id) && !Similar.titleKey(x.title).equals(self)) seeds.add(x.id);
+        }
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(Math.max(1, seeds.size()));
+        try {
+            List<java.util.concurrent.Future<List<Item>>> fs = new ArrayList<>();
+            for (final String s : seeds) fs.add(pool.submit(new java.util.concurrent.Callable<List<Item>>() {
+                @Override
+                public List<Item> call() throws IOException {
+                    return related(s);
+                }
+            }));
+            long until = t0 + Config.i("tubi.similar.waitMs", 5000);
+            for (java.util.concurrent.Future<List<Item>> f : fs) {
+                try {
+                    sim.add(f.get(Math.max(1, until - android.os.SystemClock.uptimeMillis()),
+                            java.util.concurrent.TimeUnit.MILLISECONDS), 0.6);
+                } catch (Exception e) {
+                    Log.w(TAG, "more like: a second list failed: " + e);
+                }
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        List<Item> found = new ArrayList<>();
+        for (Similar.Group g : sim.ranked()) found.add(g.items.get(0));
+        Log.i(TAG, "more like " + id + ": " + first.size() + " own + " + seeds.size() + " lists -> " + found.size()
+                + " titles in " + (android.os.SystemClock.uptimeMillis() - t0) + " ms");
+        return similarPage(it, found, name());
+    }
+
+    /** One title's related list (cms related). */
+    private List<Item> related(String id) throws IOException {
         List<Item> found = new ArrayList<>();
         try {
             JSONArray a = new JSONArray(new String(Http.get(CONTENT + Config.s("tubi.relatedPath", "/cms/content/{id}/related")
@@ -292,8 +341,7 @@ final class TubiSource extends Source {
         } catch (JSONException e) {
             throw new IOException("Tubi sent an unreadable list");
         }
-        Log.i(TAG, "more like " + id + ": " + found.size());
-        return similarPage(it, found, name());
+        return found;
     }
 
     /** Tubi's series ids carry a leading 0 that the series_id field of an episode leaves out. */

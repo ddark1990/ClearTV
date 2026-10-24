@@ -26,9 +26,11 @@ ClearTV is **free and open source**. All of the code is here in this repo, so an
 - **Hold OK for options:** on any tile or channel, on every service (YouTube, Prime Video, Tubi, Pluto TV, also while watching a Pluto TV channel), hold OK for about half a second to open a small menu: Play or Watch now, Add to / Remove from Favorites, and Remove from Continue watching where it applies. A short press still opens or plays right away. On live channels, ▶▶ also adds or removes a Favorite in one press. Live channel Favorites head that service's guide; other favorites appear in the Watchlist row on the home screen.
 - **Continue watching and resume:** pick up where you left off, or start over. The home screen has a Continue watching row for everything, and each service's own screen (YouTube, Prime Video, Tubi) starts with a row of just that service's titles, with a bar showing how far you got.
 - **YouTube chapters and SKIP SPONSOR:** videos with chapters get a segmented progress bar with the current chapter's name. When the creator marks a sponsor or ad read as its own chapter, a **SKIP SPONSOR** button jumps past it, or turn on **Auto-skip sponsor chapters** in Settings to skip those chapters by themselves. It uses the video's own chapters, so sponsor reads that aren't a separate chapter still play.
-- **More like this:** hold OK on a title (or open Options while watching) and pick More like this for a row of similar titles from the service itself: YouTube's related videos, Tubi's related titles and Prime Video's "Customers also watched". Pluto TV is live channels only, so it doesn't have it.
+- **More like this:** hold OK on a title (or open Options while watching) and pick More like this for similar titles from the service itself: YouTube's related videos, Tubi's related titles and Prime Video's "Customers also watched". Pluto TV is live channels only, so it doesn't have it.
+  - **On YouTube it finds new channels:** the first row is one video from each of up to 30 different channels like the one you were watching, then a row of those channels themselves (with their pictures; OK opens the channel), a short row from the channel you were watching, and more from the new channels. It is ranked from YouTube's own related lists, nothing hand-picked.
+  - **Movies like this:** films and shows YouTube suggests (its Free with ads and Buy or rent titles) get their own row instead of mixing in with creators' videos. OK opens the title page with Play movie and Trailer.
 - **Don't recommend channel / Hide channel:** hold OK on a YouTube video to keep its channel off your screens. Where YouTube's own menu offers "Don't recommend channel" (Home recommendations, signed in), ClearTV sends that to YouTube after you confirm. Everywhere else (Gaming and other topic pages, search) the menu says **Hide channel**. Either way ClearTV keeps its own list of hidden channels, so their videos leave every YouTube row, More like this grid and Up next queue right away and stay gone, even where YouTube's own setting doesn't reach. **Settings → Hidden channels** shows one again.
-- **Up next:** a small card at the end of a video. Autoplay is **off** unless you turn it on.
+- **Up next:** a small card in the top-left corner at the end of a video, clear of the progress bar and controls: OK plays the next one now, and the Autoplay switch sits right next to it. Autoplay is **off** unless you turn it on.
 - **Quality you choose:** Auto (climbs to the best your TV and connection allow), 1080p, 720p or 480p. The real resolution is shown on screen.
 - **Watchlist row:** your saved titles from every service on the home screen.
 - **Hover previews:** rest on a tile to see a muted preview: real video on YouTube, Tubi and Pluto TV; on Prime Video, artwork with title and description (Prime streams are DRM-protected). Can be turned off in Settings.
@@ -47,8 +49,12 @@ ClearTV is **free and open source**. All of the code is here in this repo, so an
 <img src="docs/images/more-like-this.jpg" width="49%" alt="More like this on Tubi: a grid of titles similar to Everybody Hates Chris">
 </p>
 <p>
+<img src="docs/images/more-like-this-youtube.jpg" width="49%" alt="More like this on YouTube: a row of videos from new channels like MandaloreGaming, then a row of those channels with their pictures">
+<img src="docs/images/movies-like-this.jpg" width="49%" alt="More like this on YouTube: a Movies like this row of free-with-ads films, then more from the channel you were watching">
+</p>
+<p>
 <img src="docs/images/continue-watching.jpg" width="49%" alt="Tubi's screen in ClearTV starting with its own Continue watching row">
-<img src="docs/images/up-next.jpg" width="49%" alt="Up next card at the end of a video: OK play now, BACK cancel">
+<img src="docs/images/up-next.jpg" width="49%" alt="Up next card in the top-left corner at the end of a video: Play now and Autoplay: off">
 </p>
 
 ---

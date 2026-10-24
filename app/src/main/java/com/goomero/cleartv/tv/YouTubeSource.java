@@ -544,23 +544,519 @@ final class YouTubeSource extends Source {
         return it != null && it.kind == Item.VIDEO && it.id.matches("[A-Za-z0-9_-]{11}");
     }
 
-    /**
-     * YouTube's own related videos for the video: the TV app's watch-next rows ("next"; the account's when signed
-     * in), gathered into one grid.
-     */
     @Override
     public Item.Page similar(Item it) throws IOException {
-        JSONObject extra;
+        return similar(it, null);
+    }
+
+    /**
+     * "More like this" that goes looking for new channels. Three kinds of YouTube's own related lists, fetched in
+     * parallel: the TV app's watch-next rows ("next", the account's when signed in), the web watch page's related
+     * column (signed out; it names each video's channel) and, as a second round, the related columns of the first
+     * few videos from other channels. Channels are ranked by how often and how high they turn up across those lists;
+     * the source channel and hidden channels are left out of the new-channel rows. Rows: one video per new channel,
+     * the new channels themselves, a short row from the source channel, then more videos from the new channels.
+     * The first round's rows go to {@code progress} as soon as they are in.
+     */
+    @Override
+    public Item.Page similar(final Item it, Progress progress) throws IOException {
+        final long t0 = android.os.SystemClock.uptimeMillis();
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(
+                Math.max(2, Config.i("youtube.similar.seeds", 4)) + 4);
         try {
-            extra = new JSONObject().put("videoId", it.id);
-        } catch (JSONException e) {
-            throw new IOException(e);
+            java.util.concurrent.Future<List<Item>> tvF = pool.submit(new java.util.concurrent.Callable<List<Item>>() {
+                @Override
+                public List<Item> call() throws IOException {
+                    JSONObject extra;
+                    try {
+                        extra = new JSONObject().put("videoId", it.id);
+                    } catch (JSONException e) {
+                        throw new IOException(e);
+                    }
+                    Item.Page p = shelves("next", extra);
+                    List<Item> all = new ArrayList<>();
+                    for (Item.Shelf s : p.shelves) for (Item x : s.items) {
+                        Item m = movieOf(x);
+                        if (m != null) all.add(m);
+                        else if (x.kind == Item.VIDEO || x.kind == Item.LIVE) all.add(x);
+                    }
+                    return all;
+                }
+            });
+            java.util.concurrent.Future<WebRelated> webF = pool.submit(new java.util.concurrent.Callable<WebRelated>() {
+                @Override
+                public WebRelated call() throws IOException {
+                    return webRelated(it.id);
+                }
+            });
+            long wait = Config.i("youtube.similar.firstMs", 8000);
+            IOException err = null;
+            List<Item> tv = null;
+            WebRelated web = null;
+            try {
+                tv = await(tvF, t0 + wait);
+            } catch (IOException e) {
+                err = e;
+            }
+            try {
+                web = await(webF, t0 + wait);
+            } catch (IOException e) {
+                if (err == null) err = e;
+            }
+            if (tv == null && web == null) throw err != null ? err : new IOException("YouTube didn't answer.");
+            long t1 = android.os.SystemClock.uptimeMillis();
+            // the source channel: the web page's owner, else the tile's channel or its second line
+            String srcId = web != null ? web.ownerId : "";
+            String srcName = web != null ? web.ownerName : "";
+            if (srcId.isEmpty() && it.channel != null && it.channel.id.startsWith("UC")) srcId = it.channel.id;
+            if (srcName.isEmpty() && it.channel != null && !it.channel.title.equals("Channel")) srcName = it.channel.title;
+            if (srcName.isEmpty()) srcName = channelName(it.subtitle);
+            final Mix mix = new Mix(it, srcId, srcName, HiddenChannels.of(app, id()));
+            if (web != null) mix.add(web.items, 1.0);
+            if (tv != null) mix.add(tv, 1.0);
+            if (progress != null) progress.partial(mix.page(false));
+            // second round: the related columns of the best videos from other channels
+            List<String> seeds = mix.seeds(Config.i("youtube.similar.seeds", 4), tv, web == null ? null : web.items);
+            List<java.util.concurrent.Future<WebRelated>> hops = new ArrayList<>();
+            for (final String v : seeds) hops.add(pool.submit(new java.util.concurrent.Callable<WebRelated>() {
+                @Override
+                public WebRelated call() throws IOException {
+                    return webRelated(v);
+                }
+            }));
+            // channel tiles whose channel came without a picture (a TV tile names only the channel): the owner's
+            // avatar from the start of that video's web watch data, read only up to the owner
+            List<java.util.concurrent.Future<WebRelated>> looks = new ArrayList<>();
+            int maxLooks = Config.i("youtube.similar.avatarLookups", 20);
+            for (final String v : mix.needAvatar.values()) {
+                if (looks.size() >= maxLooks) break;
+                looks.add(pool.submit(new java.util.concurrent.Callable<WebRelated>() {
+                    @Override
+                    public WebRelated call() throws IOException {
+                        return webOwner(v);
+                    }
+                }));
+            }
+            long until = t1 + Config.i("youtube.similar.secondMs", 5000);
+            int got = 0;
+            for (java.util.concurrent.Future<WebRelated> f : hops) {
+                try {
+                    WebRelated h = await(f, until);
+                    mix.add(h.items, 0.6);
+                    mix.avatar(h.ownerId, h.ownerAvatar);
+                    got++;
+                } catch (IOException e) {
+                    Log.w(TAG, "more like: a second list failed: " + e.getMessage());
+                }
+            }
+            int looked = 0;
+            for (java.util.concurrent.Future<WebRelated> f : looks) {
+                try {
+                    WebRelated o = await(f, until);
+                    if (!o.ownerAvatar.isEmpty()) looked++;
+                    mix.avatar(o.ownerId, o.ownerAvatar);
+                } catch (IOException e) {
+                    Log.w(TAG, "more like: a channel picture failed: " + e.getMessage());
+                }
+            }
+            Item.Page page = mix.page(true);
+            Log.i(TAG, "more like " + it.id + ": tv " + (tv == null ? "-" : tv.size()) + ", web "
+                    + (web == null ? "-" : web.items.size()) + " in " + (t1 - t0) + " ms; " + got + "/" + seeds.size()
+                    + " second lists; " + looked + "/" + looks.size() + " pictures looked up; " + mix.summary + " in " + (android.os.SystemClock.uptimeMillis() - t0) + " ms");
+            return page;
+        } finally {
+            pool.shutdownNow();
         }
-        Item.Page p = shelves("next", extra);
-        List<Item> all = new ArrayList<>();
-        for (Item.Shelf s : p.shelves) for (Item x : s.items) if (x.kind == Item.VIDEO || x.kind == Item.LIVE) all.add(x);
-        Log.i(TAG, "more like " + it.id + ": " + all.size() + " from " + p.shelves.size() + " rows");
-        return similarPage(it, all, name());
+    }
+
+    /**
+     * The YouTube Movies title-page tile for a film or show among related videos (YouTube's own markers: a
+     * paid-content badge on a TV tile, an "MV"/"SC" title page), opening like movie tiles elsewhere; null for videos.
+     */
+    private static Item movieOf(Item x) {
+        if (x == null) return null;
+        if (x.kind == Item.PAGE && x.id.matches("(MV|SC)[A-Za-z0-9_-]+")) return x;
+        if (x.kind != Item.VIDEO || x.commerce.isEmpty() || !x.id.matches("[A-Za-z0-9_-]{11}")) return null;
+        String sub = x.subtitle.isEmpty() ? x.commerce : x.subtitle + " · " + x.commerce;
+        Item m = new Item(Item.PAGE, "MV" + x.id, x.title, sub, x.image, x.badge, "");
+        m.commerce = x.commerce;
+        return m;
+    }
+
+    private static <T> T await(java.util.concurrent.Future<T> f, long until) throws IOException {
+        try {
+            return f.get(Math.max(1, until - android.os.SystemClock.uptimeMillis()), java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.ExecutionException e) {
+            Throwable c = e.getCause();
+            if (c instanceof IOException) throw (IOException) c;
+            throw new IOException(String.valueOf(c));
+        } catch (java.util.concurrent.TimeoutException e) {
+            f.cancel(true);
+            throw new java.net.SocketTimeoutException("YouTube took too long.");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted");
+        }
+    }
+
+    /** The rows of one "More like this" page, built from the ranked channels. */
+    private final class Mix {
+        final Item of;
+        final String srcId, srcName, srcKey;
+        final List<HiddenChannels.Entry> hidden;
+        final Similar sim;
+        /** Films and shows (see movieOf), kept apart from the channels: by title page, best first. */
+        final Map<String, double[]> movieScore = new HashMap<>();
+        final Map<String, Item> movies = new java.util.LinkedHashMap<>();
+        final Set<String> movieTitles = new HashSet<>();
+        /** Channel pictures by channel id, from any list that carried one (the same channel's TV tiles do not). */
+        final Map<String, String> avatars = new HashMap<>();
+        /** Channel tiles of the last page still without a picture: channel id to one of its videos. */
+        final Map<String, String> needAvatar = new java.util.LinkedHashMap<>();
+        String summary = "";
+
+        Mix(Item of, String srcId, String srcName, List<HiddenChannels.Entry> hidden) {
+            this.of = of;
+            this.srcId = srcId;
+            this.srcName = srcName;
+            this.srcKey = srcName.toLowerCase(java.util.Locale.ROOT).trim();
+            this.hidden = hidden;
+            this.sim = new Similar(new Similar.Key() {
+                @Override
+                public String of(Item x) {
+                    if (x.id.equals(Mix.this.of.id)) return null;
+                    String n = x.channel != null && !x.channel.title.equals("Channel") ? x.channel.title : channelName(x.subtitle);
+                    if (n.isEmpty() || n.matches("(?i).*\\d.*\\b(views?|watching|ago)\\b.*")) return null;
+                    return n.toLowerCase(java.util.Locale.ROOT).trim();
+                }
+            });
+        }
+
+        /** One related list: films and shows to the movie row (scored like channels), the creators' videos to the ranking. */
+        void add(List<Item> list, double w) {
+            List<Item> videos = new ArrayList<>();
+            for (int pos = 0; pos < list.size(); pos++) {
+                Item x = list.get(pos);
+                Item m = movieOf(x);
+                if (m == null) {
+                    videos.add(x);
+                    if (x.channel != null) avatar(x.channel.id, x.channel.image);
+                    continue;
+                }
+                double[] sc = movieScore.get(m.id);
+                if (sc == null) {
+                    String t = m.title.toLowerCase(java.util.Locale.ROOT).trim();
+                    if (m.id.equals("MV" + of.id) || !movieTitles.add(t)) continue;
+                    sc = new double[]{0, movies.size()};
+                    movieScore.put(m.id, sc);
+                    movies.put(m.id, m);
+                }
+                sc[0] += w * (pos < 8 ? 1.5 : 1.0);
+            }
+            sim.add(videos, w);
+        }
+
+        void avatar(String cid, String url) {
+            if (cid != null && cid.startsWith("UC") && url != null && !url.isEmpty() && !avatars.containsKey(cid)) avatars.put(cid, url);
+        }
+
+        List<Item> rankedMovies() {
+            List<Item> l = new ArrayList<>(movies.values());
+            java.util.Collections.sort(l, new java.util.Comparator<Item>() {
+                @Override
+                public int compare(Item a, Item b) {
+                    double[] x = movieScore.get(a.id), y = movieScore.get(b.id);
+                    int c = Double.compare(y[0], x[0]);
+                    return c != 0 ? c : Double.compare(x[1], y[1]);
+                }
+            });
+            int max = Config.i("youtube.similar.movies", 20);
+            return l.size() > max ? new ArrayList<>(l.subList(0, max)) : l;
+        }
+
+        /** Whether the channel {id, lower-case name} is the source's (a collaboration naming it counts). */
+        boolean isSource(String id, String key) {
+            if (!srcId.isEmpty() && srcId.equals(id)) return true;
+            if (srcKey.isEmpty()) return false;
+            return key.equals(srcKey) || key.startsWith(srcKey + " and ") || key.endsWith(" and " + srcKey)
+                    || key.contains(" and " + srcKey + " and ");
+        }
+
+        private String idOf(Similar.Group g) {
+            for (Item x : g.items) if (x.channel != null && x.channel.id.startsWith("UC")) return x.channel.id;
+            return "";
+        }
+
+        private boolean isHidden(Similar.Group g, String id) {
+            if (hidden.isEmpty()) return false;
+            String name = g.items.isEmpty() ? g.key : channelName(g.items.get(0).subtitle);
+            return HiddenChannels.contains(hidden, id(), new String[]{id, name});
+        }
+
+        /** Videos to ask for their own related lists: the first of each other channel, alternating the two lists. */
+        List<String> seeds(int n, List<Item> a, List<Item> b) {
+            List<String> out = new ArrayList<>();
+            Set<String> chans = new HashSet<>();
+            int ia = 0, ib = 0;
+            List<Item> la = b != null ? b : new ArrayList<Item>(), lb = a != null ? a : new ArrayList<Item>();
+            while (out.size() < n && (ia < la.size() || ib < lb.size())) {
+                Item x = (out.size() % 2 == 0 && ia < la.size()) || ib >= lb.size() ? la.get(ia++) : lb.get(ib++);
+                String k = sim.keyOf(x);
+                if (k == null || x.kind != Item.VIDEO) continue;
+                Similar.Group g = sim.group(k);
+                if (g == null || isSource(idOf(g), k) || isHidden(g, idOf(g)) || !chans.add(k)) continue;
+                out.add(x.id);
+            }
+            return out;
+        }
+
+        Item.Page page(boolean complete) {
+            List<Item> lead = new ArrayList<>(), chans = new ArrayList<>(), own = new ArrayList<>(), more = new ArrayList<>();
+            List<List<Item>> rest = new ArrayList<>();
+            int newChannels = 0;
+            needAvatar.clear();
+            int maxLead = Config.i("youtube.similar.channels", 30), maxOwn = Config.i("youtube.similar.ownVideos", 6);
+            for (Similar.Group g : sim.ranked()) {
+                String cid = idOf(g);
+                if (isSource(cid, g.key)) {
+                    for (Item x : g.items) if (own.size() < maxOwn) own.add(x);
+                    continue;
+                }
+                if (isHidden(g, cid)) continue;
+                if (lead.size() >= maxLead) {
+                    rest.add(g.items);
+                    continue;
+                }
+                newChannels++;
+                lead.add(g.items.get(0));
+                if (g.items.size() > 1) rest.add(g.items.subList(1, g.items.size()));
+                if (!cid.isEmpty() && chans.size() < Config.i("youtube.similar.channelTiles", 20)) {
+                    Item first = g.items.get(0);
+                    String name = first.channel != null && !first.channel.title.equals("Channel") ? first.channel.title
+                            : channelName(first.subtitle);
+                    Item c = channelTile(cid, name);
+                    String img = avatars.containsKey(cid) ? avatars.get(cid) : "";
+                    if (img.isEmpty() && first.id.matches("[A-Za-z0-9_-]{11}")) needAvatar.put(cid, first.id);
+                    c = new Item(Item.CHANNEL, cid, c.title, "Channel", img, "", "");
+                    chans.add(c);
+                }
+            }
+            // more from the new channels: round robin by rank, so no channel takes over
+            int maxMore = Config.i("youtube.similar.moreVideos", 40);
+            for (int round = 0; more.size() < maxMore; round++) {
+                boolean any = false;
+                for (List<Item> l : rest) {
+                    if (round < l.size()) {
+                        any = true;
+                        if (more.size() < maxMore) more.add(l.get(round));
+                    }
+                }
+                if (!any) break;
+            }
+            Item.Page p = new Item.Page();
+            String src = srcName.isEmpty() ? "this channel" : srcName;
+            if (!lead.isEmpty()) p.shelves.add(new Item.Shelf("New channels like " + src, lead));
+            if (chans.size() >= 2) p.shelves.add(new Item.Shelf("Channels like " + src, chans));
+            List<Item> films = rankedMovies();
+            if (!films.isEmpty()) p.shelves.add(new Item.Shelf("Movies like this", films));
+            if (!own.isEmpty()) p.shelves.add(new Item.Shelf("More from " + src, own));
+            if (complete && !more.isEmpty()) {
+                p.shelves.add(new Item.Shelf("More from these channels", more));
+                p.grid = p.shelves.size() - 1;
+            }
+            if (p.isEmpty()) p.empty = name() + " lists nothing similar for this video.";
+            summary = newChannels + " new channels, " + chans.size() + " channel tiles, " + own.size() + " from the source, "
+                    + more.size() + " more, " + films.size() + " movies";
+            return p;
+        }
+    }
+
+    /** The web watch page's related column for a video and the video's owner. */
+    private static final class WebRelated {
+        final List<Item> items = new ArrayList<>();
+        String ownerId = "", ownerName = "", ownerAvatar = "";
+    }
+
+    /** Ends a watch-data read once the owner is in. */
+    private static final class OwnerFound extends RuntimeException {
+        @Override
+        public synchronized Throwable fillInStackTrace() {
+            return this;
+        }
+    }
+
+    /** The owner (channel id, name, picture) of a video: the web watch data read only as far as its owner (~20 KB). */
+    private WebRelated webOwner(String videoId) throws IOException {
+        return webRelated(videoId, true);
+    }
+
+    /** A channel picture URL at tile size (the watch data sends 48-88 px ones; some are protocol-relative). */
+    private static String avatarUrl(String url) {
+        if (url == null || url.isEmpty()) return "";
+        if (url.startsWith("//")) url = "https:" + url;
+        return url.replaceFirst("=s\\d+-", "=s240-");
+    }
+
+    /** What the related-column read never builds (the answer is ~0.5 MB; only the column's tiles are kept). */
+    private static final Set<String> RELATED_SKIP = new HashSet<>(Arrays.asList("frameworkUpdates", "responseContext",
+            "engagementPanels", "playerOverlays", "topbar", "trackingParams", "clickTrackingParams", "loggingDirectives",
+            "loggingContext", "commandMetadata", "accessibility", "accessibilityData", "menuButton", "menu",
+            "animatedThumbnailOverlayViewModel", "lottieData", "attributedDescription", "description",
+            "videoPrimaryInfoRenderer", "metadataRowContainer", "subscribeButton", "sponsorButton", "subscriptionButton"));
+    private static final Set<String> RELATED_CAPTURE = new HashSet<>(Arrays.asList("lockupViewModel", "videoOwnerRenderer"));
+
+    /** The web watch data ("next", signed out, as {@link #chapters}): related videos with their channels, and the owner. */
+    private WebRelated webRelated(String videoId) throws IOException {
+        return webRelated(videoId, false);
+    }
+
+    private WebRelated webRelated(String videoId, final boolean ownerOnly) throws IOException {
+        final WebRelated out = new WebRelated();
+        try {
+            JSONObject client = new JSONObject().put("clientName", "WEB").put("clientVersion", WEB_VERSION).put("hl", "en").put("gl", "US");
+            JSONObject nb = new JSONObject().put("videoId", videoId).put("context", new JSONObject().put("client", client));
+            Map<String, String> h = new HashMap<>();
+            h.put("User-Agent", Http.DESKTOP_UA);
+            h.put("Origin", "https://www.youtube.com");
+            try (Http.Response r = Http.open(API + "next?prettyPrint=false", h, nb.toString().getBytes(StandardCharsets.UTF_8),
+                    "application/json", true)) {
+                JsonReader jr = new JsonReader(new InputStreamReader(r.body, StandardCharsets.UTF_8));
+                JsonScan.scan(jr, RELATED_CAPTURE, NONE, RELATED_SKIP, new JsonScan.Sink() {
+                    @Override
+                    public void onValue(String key, String name, JSONObject v) {
+                        if (key.equals("videoOwnerRenderer")) {
+                            JSONObject be = JsonScan.path(v, "navigationEndpoint", "browseEndpoint");
+                            if (be != null && out.ownerId.isEmpty()) {
+                                out.ownerId = be.optString("browseId", "");
+                                out.ownerName = JsonScan.text(v.optJSONObject("title"));
+                                JSONObject th = v.optJSONObject("thumbnail");
+                                JSONArray ts = th == null ? null : th.optJSONArray("thumbnails");
+                                if (ts != null && ts.length() > 0 && ts.optJSONObject(ts.length() - 1) != null)
+                                    out.ownerAvatar = avatarUrl(ts.optJSONObject(ts.length() - 1).optString("url", ""));
+                                if (ownerOnly) throw new OwnerFound();
+                            }
+                            return;
+                        }
+                        if (ownerOnly) return;
+                        Item x = webLockup(v);
+                        if (x != null) out.items.add(x);
+                    }
+                });
+            }
+        } catch (OwnerFound done) {
+            // the owner is all that was asked for: the rest of the answer is never read
+        } catch (JSONException e) {
+            throw new IOException("YouTube sent an unreadable video answer");
+        }
+        return out;
+    }
+
+    /** A related-column video (web lockupViewModel) with its channel (id, name, avatar); null for mixes and playlists. */
+    private static Item webLockup(JSONObject l) {
+        String type = l.optString("contentType");
+        boolean film = "LOCKUP_CONTENT_TYPE_MOVIE".equals(type);
+        if (!film && !"LOCKUP_CONTENT_TYPE_VIDEO".equals(type)) return null;
+        String id = l.optString("contentId");
+        if (!id.matches("[A-Za-z0-9_-]{11}")) return null;
+        JSONObject m = JsonScan.path(l, "metadata", "lockupMetadataViewModel");
+        if (m == null) return null;
+        String commerce = lockupCommerce(m);
+        if (film || !commerce.isEmpty()) return webMovie(l, m, id, commerce);
+        String title = JsonScan.text(m.optJSONObject("title"));
+        JSONArray rows = JsonScan.path(m, "metadata", "contentMetadataViewModel") == null ? null
+                : m.optJSONObject("metadata").optJSONObject("contentMetadataViewModel").optJSONArray("metadataRows");
+        String channel = "";
+        StringBuilder sub = new StringBuilder();
+        if (rows != null) for (int i = 0; i < rows.length() && i < 2; i++) {
+            JSONArray parts = rows.optJSONObject(i) == null ? null : rows.optJSONObject(i).optJSONArray("metadataParts");
+            if (parts == null) continue;
+            for (int k = 0; k < parts.length(); k++) {
+                JSONObject part = parts.optJSONObject(k);
+                String s = JsonScan.text(JsonScan.path(part, "text"));
+                if (s.isEmpty()) continue;
+                if (i == 0 && k == 0) channel = s;
+                // the web column writes "2.6M" with a play icon; the tiles elsewhere say "2.6M views"
+                if (i == 1 && k == 0 && s.matches("[\\d.,]+[KMB]?")) s += " views";
+                if (sub.length() > 0) sub.append(" · ");
+                sub.append(s);
+            }
+        }
+        JSONObject av = JsonScan.path(m, "image", "decoratedAvatarViewModel");
+        JSONObject be = av == null ? null : JsonScan.path(av, "rendererContext", "commandContext", "onTap", "innertubeCommand", "browseEndpoint");
+        String cid = be == null ? "" : be.optString("browseId", "");
+        JSONObject img = av == null ? null : JsonScan.path(av, "avatar", "avatarViewModel", "image");
+        JSONArray srcs = img == null ? null : img.optJSONArray("sources");
+        String avatar = srcs == null || srcs.length() == 0 ? "" : srcs.optJSONObject(0).optString("url", "");
+        // the column's 68 px avatar: ask for a tile-sized one
+        avatar = avatarUrl(avatar);
+        String badge = "";
+        JSONArray ov = JsonScan.path(l, "contentImage", "thumbnailViewModel") == null ? null
+                : l.optJSONObject("contentImage").optJSONObject("thumbnailViewModel").optJSONArray("overlays");
+        if (ov != null) for (int i = 0; i < ov.length(); i++) {
+            JSONObject b = JsonScan.path(ov.optJSONObject(i), "thumbnailBottomOverlayViewModel");
+            JSONArray badges = b == null ? null : b.optJSONArray("badges");
+            if (badges != null && badges.length() > 0 && badges.optJSONObject(0) != null) {
+                JSONObject tb = badges.optJSONObject(0).optJSONObject("thumbnailBadgeViewModel");
+                if (tb != null) badge = tb.optString("text");
+            }
+        }
+        boolean live = "LIVE".equalsIgnoreCase(badge);
+        Item x = new Item(live ? Item.LIVE : Item.VIDEO, id, title, sub.toString(),
+                "https://i.ytimg.com/vi/" + id + "/mqdefault.jpg", live ? "LIVE" : badge, "");
+        // a collaboration's avatar opens a list of channels instead: the tile then finds its channel on request
+        if (cid.startsWith("UC")) x.channel = new Item(Item.CHANNEL, cid, channel.isEmpty() ? "Channel" : channel, "Channel", avatar, "", "");
+        return x;
+    }
+
+    /** The lockup's commerce badge (badgeStyle BADGE_COMMERCE: "Free with ads", "Buy or rent"); empty for a video. */
+    private static String lockupCommerce(JSONObject m) {
+        JSONObject cm = JsonScan.path(m, "metadata", "contentMetadataViewModel");
+        JSONArray rows = cm == null ? null : cm.optJSONArray("metadataRows");
+        if (rows != null) for (int i = 0; i < rows.length(); i++) {
+            JSONArray badges = rows.optJSONObject(i) == null ? null : rows.optJSONObject(i).optJSONArray("badges");
+            if (badges != null) for (int k = 0; k < badges.length(); k++) {
+                JSONObject b = JsonScan.path(badges.optJSONObject(k), "badgeViewModel");
+                if (b != null && "BADGE_COMMERCE".equals(b.optString("badgeStyle"))) {
+                    String t = b.optString("badgeText");
+                    return t.isEmpty() ? "Movie" : t;
+                }
+            }
+        }
+        return "";
+    }
+
+    /** A web related-column film (or show) as a YouTube Movies title-page tile with its poster. */
+    private static Item webMovie(JSONObject l, JSONObject m, String id, String commerce) {
+        String title = JsonScan.text(m.optJSONObject("title"));
+        JSONObject cm = JsonScan.path(m, "metadata", "contentMetadataViewModel");
+        JSONArray rows = cm == null ? null : cm.optJSONArray("metadataRows");
+        StringBuilder sub = new StringBuilder();
+        if (rows != null) for (int i = 0; i < rows.length(); i++) {
+            JSONArray parts = rows.optJSONObject(i) == null ? null : rows.optJSONObject(i).optJSONArray("metadataParts");
+            if (parts != null) for (int k = 0; k < parts.length(); k++) {
+                String s = JsonScan.text(JsonScan.path(parts.optJSONObject(k), "text"));
+                if (s.isEmpty()) continue;
+                if (sub.length() > 0) sub.append(" · ");
+                sub.append(s);
+            }
+        }
+        if (!commerce.isEmpty()) sub.append(sub.length() > 0 ? " · " : "").append(commerce);
+        JSONObject img = JsonScan.path(l, "contentImage", "thumbnailViewModel", "image");
+        JSONArray srcs = img == null ? null : img.optJSONArray("sources");
+        String image = srcs == null || srcs.length() == 0 ? "" : srcs.optJSONObject(srcs.length() - 1).optString("url", "");
+        if (image.isEmpty()) image = "https://i.ytimg.com/vi/" + id + "/mqdefault.jpg";
+        String badge = "";
+        JSONArray ov = JsonScan.path(l, "contentImage", "thumbnailViewModel") == null ? null
+                : l.optJSONObject("contentImage").optJSONObject("thumbnailViewModel").optJSONArray("overlays");
+        if (ov != null) for (int i = 0; i < ov.length(); i++) {
+            JSONArray badges = JsonScan.path(ov.optJSONObject(i), "thumbnailBottomOverlayViewModel") == null ? null
+                    : ov.optJSONObject(i).optJSONObject("thumbnailBottomOverlayViewModel").optJSONArray("badges");
+            JSONObject tb = badges == null || badges.length() == 0 ? null : JsonScan.path(badges.optJSONObject(0), "thumbnailBadgeViewModel");
+            if (tb != null) badge = tb.optString("text");
+        }
+        Item x = new Item(Item.PAGE, "MV" + id, title, sub.toString(), image, badge, "");
+        x.commerce = commerce.isEmpty() ? "Movie" : commerce;
+        return x;
     }
 
     // ------------------------------------------------------------------ don't recommend channel
@@ -1168,7 +1664,27 @@ final class YouTubeSource extends Source {
         JSONObject cmd = t.optJSONObject("onSelectCommand");
         Item it = fromCommand(cmd, title, sub.toString(), image, badge, t.optString("contentType"));
         readMenu(it, t.optJSONObject("onLongPressCommand"), t);
+        if (it != null) it.commerce = tileCommerce(lines);
         return it;
+    }
+
+    /**
+     * The tile's YouTube paid-content badge (style BADGE_STYLE_TYPE_YPC: "Free with ads", "Buy or rent", a price), which
+     * YouTube puts only on films and shows it sells or streams itself; empty for a creator's video.
+     */
+    private static String tileCommerce(JSONArray lines) {
+        if (lines != null) for (int i = 0; i < lines.length(); i++) {
+            JSONObject lr = JsonScan.path(lines.optJSONObject(i), "lineRenderer");
+            JSONArray li = lr == null ? null : lr.optJSONArray("items");
+            if (li != null) for (int k = 0; k < li.length(); k++) {
+                JSONObject b = JsonScan.path(li.optJSONObject(k), "lineItemRenderer", "badge", "metadataBadgeRenderer");
+                if (b != null && "BADGE_STYLE_TYPE_YPC".equals(b.optString("style"))) {
+                    String label = b.optString("label");
+                    return label.isEmpty() ? "Movie" : label;
+                }
+            }
+        }
+        return "";
     }
 
     private static Item parseLockup(JSONObject l) {

@@ -33,6 +33,11 @@ public final class Item {
      * the token that takes it back, when the menu carries them; null otherwise.
      */
     public String hideToken, hideUndo;
+    /**
+     * The service's paid/commerce label on the tile (YouTube: "Free with ads", "Buy or rent"), set when the tile is
+     * a film or show sold through the service rather than a creator's video; empty otherwise.
+     */
+    public String commerce = "";
     /** Where the service keeps the tile's menu when it is fetched on demand (YouTube TV's panel), until it is read. */
     public String hideMenu;
     /** Title and subtitle cut to the tile width (drawW), cached by ShelfView. */

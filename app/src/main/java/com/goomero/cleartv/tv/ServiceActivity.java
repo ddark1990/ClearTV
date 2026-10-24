@@ -1433,12 +1433,27 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
 
     /** The service's own similar titles for the tile, as a page pushed on this screen (BACK returns). */
     private void showSimilar(final Item it) {
+        final int[] gen = {0};
         load("More like this", new Loader() {
             @Override
             public Item.Page run() throws IOException {
-                return source.similar(it);
+                return source.similar(it, new Source.Progress() {
+                    @Override
+                    public void partial(final Item.Page p) {
+                        // the first rows while the rest is gathered; the complete page replaces them keeping focus
+                        main.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (gen[0] != generation || isFinishing() || current != null || p.isEmpty()) return;
+                                show(p, null, 0, 0);
+                                showingCache = true;
+                            }
+                        });
+                    }
+                });
             }
         }, true);
+        gen[0] = generation;
     }
 
     public static void openInService(android.app.Activity a, String service, Item it) {

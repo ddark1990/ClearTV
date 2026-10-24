@@ -132,8 +132,10 @@ public final class PlayerChrome {
     private final Runnable hide = new Runnable() {
         @Override
         public void run() {
-            if (!panel.isShowing() && scrubTo < 0 && target.isPlaying()) overlay.setVisibility(View.GONE);
-            else main.postDelayed(this, HIDE_MS);
+            if (!panel.isShowing() && scrubTo < 0 && target.isPlaying()) {
+                overlay.setVisibility(View.GONE);
+                placeCaption();
+            } else main.postDelayed(this, HIDE_MS);
         }
     };
     private final Runnable tick = new Runnable() {
@@ -222,6 +224,13 @@ public final class PlayerChrome {
         cap.leftMargin = cap.rightMargin = Ui.dp(c, Ui.SAFE_X);
         root.addView(captionView, cap);
         root.addView(overlay, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
+        // the controls grow by a line for titles with chapters: the captions and the skip chip follow their height
+        overlay.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+            @Override
+            public void onLayoutChange(View v, int l, int t, int r, int b, int ol, int ot, int or, int ob) {
+                if (b - t != ob - ot) placeCaption();
+            }
+        });
         skipChip = Ui.kicker(c, "Skip intro  ▸", 14, Ui.V_TEXT);
         skipChip.setPadding(Ui.dp(c, Ui.S3), Ui.dp(c, Ui.S1 + 2), Ui.dp(c, Ui.S3), Ui.dp(c, Ui.S1 + 2));
         GradientDrawable sk = Ui.rounded(0xE6060809, Ui.dp(c, Ui.PILL + 6));
@@ -267,8 +276,10 @@ public final class PlayerChrome {
         nextCount = Ui.oneLine(Ui.kicker(c, "", 11, Ui.V_MUTED));
         nextCard.addView(nextCount, Ui.below(c, Ui.S1));
         nextCard.setVisibility(View.GONE);
-        FrameLayout.LayoutParams nlp = new FrameLayout.LayoutParams(Ui.dp(c, 520), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.END);
-        nlp.setMargins(0, 0, Ui.dp(c, 16), Ui.dp(c, Ui.SAFE_Y + 120));
+        // top left at the TV-safe margins, clear of the controls at the bottom (the paused badge and the options
+        // panel are on the right, the skip chip bottom right)
+        FrameLayout.LayoutParams nlp = new FrameLayout.LayoutParams(Ui.dp(c, 520), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
+        nlp.setMargins(Ui.dp(c, Ui.SAFE_X), Ui.dp(c, Ui.SAFE_Y), 0, 0);
         root.addView(nextCard, nlp);
         panel = new Panel(c, root);
         main.postDelayed(watch, 1000);
@@ -372,7 +383,8 @@ public final class PlayerChrome {
     private void showNextCard(boolean counting) {
         if (!countdownVisible()) nextFocus = 0; // a fresh card starts on play now
         nextLine.setText(nextTitle);
-        String keys = nextFocus == 0 ? "OK play now · ↓ autoplay · BACK cancel" : "OK switch · ↑ play now · BACK cancel";
+        // the two chips sit side by side: → (or ↓) moves to the switch, ← (or ↑) back to play now
+        String keys = nextFocus == 0 ? "OK play now · → autoplay · BACK cancel" : "OK switch · ← play now · BACK cancel";
         nextCount.setText(((counting ? "Starts in " + countdown + " s · " : "") + keys).toUpperCase(Locale.ROOT));
         autoChip.setText(autoplayNext(c) ? "AUTOPLAY: ON" : "AUTOPLAY: OFF");
         styleChip(playChip, nextFocus == 0);
@@ -586,6 +598,23 @@ public final class PlayerChrome {
     private void placeCaption() {
         int lift = overlay.getVisibility() == View.VISIBLE ? overlay.getHeight() - overlay.getPaddingTop() - Ui.dp(c, Ui.SAFE_Y) : 0;
         captionView.setTranslationY(-Math.max(0, lift));
+        placeChip();
+    }
+
+    /**
+     * The skip chip and the "Skipped sponsor" note keep their spot (bottom right, above where the controls start)
+     * while the controls are hidden; while they show, both move up just above the controls' text (title, chapter
+     * line), which can be taller than that spot.
+     */
+    private void placeChip() {
+        int lift = 0;
+        if (overlay.getVisibility() == View.VISIBLE && overlay.getHeight() > 0) {
+            int above = overlay.getHeight() - overlay.getPaddingTop() + Ui.dp(c, Ui.S2);
+            lift = above - Ui.dp(c, Ui.SAFE_Y + 120);
+        }
+        float y = -Math.max(0, lift);
+        skipChip.setTranslationY(y);
+        skipNote.setTranslationY(y);
     }
 
     public void setQuality(String text) {

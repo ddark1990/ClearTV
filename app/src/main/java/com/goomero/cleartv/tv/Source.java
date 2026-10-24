@@ -154,23 +154,56 @@ public abstract class Source {
         return false;
     }
 
-    /** The service's own similar titles for the tile as one wrapping grid (background thread). */
+    /** The service's own similar titles for the tile (background thread). */
     public Item.Page similar(Item it) throws IOException {
         throw new IOException(name() + " has no similar titles.");
     }
 
-    /** One grid of similar titles, the source tile and repeats left out; an empty page says so. */
+    /** Receives a first, partial "More like this" page while the rest is still being gathered (background thread). */
+    public interface Progress {
+        void partial(Item.Page p);
+    }
+
+    /**
+     * {@link #similar(Item)} that may hand a first page to {@code progress} as soon as the title's own list is in,
+     * before the slower second round; the page returned is the complete one.
+     */
+    public Item.Page similar(Item it, Progress progress) throws IOException {
+        return similar(it);
+    }
+
+    /**
+     * One grid of similar titles that favours new titles: the source tile, its show and repeats are left out,
+     * one tile per title (a show's seasons, versions and live channel count as one), and at most two tiles of the
+     * source's own show or film series, placed last. An empty page says so.
+     */
     protected static Item.Page similarPage(Item of, List<Item> found, String name) {
         Item.Page p = new Item.Page();
-        List<Item> keep = new java.util.ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
         seen.add(of.id);
-        for (Item x : found) if (x != null && seen.add(x.id)) keep.add(x);
+        String showId = of.channel != null && !of.channel.id.isEmpty() ? of.channel.id : null;
+        if (showId != null) seen.add(showId);
+        String self = Similar.titleKey(of.title);
+        String show = of.channel != null && !of.channel.title.isEmpty() ? Similar.titleKey(of.channel.title) : null;
+        java.util.Set<String> titles = new java.util.HashSet<>();
+        List<Item> fresh = new java.util.ArrayList<>(), same = new java.util.ArrayList<>();
+        for (Item x : found) {
+            if (x == null || !seen.add(x.id)) continue;
+            String k = Similar.titleKey(x.title);
+            if (k.equals(self) || k.equals(show)) {
+                if (same.size() < 2) same.add(x);
+            } else if (titles.add(k)) {
+                fresh.add(x);
+            }
+        }
+        List<Item> keep = new java.util.ArrayList<>(fresh);
+        keep.addAll(same);
         if (keep.isEmpty()) {
             p.empty = name + " lists nothing similar for this title.";
             return p;
         }
-        p.shelves.add(new Item.Shelf("More like " + of.title, keep));
+        String label = of.channel != null && !of.channel.title.isEmpty() && of.kind == Item.VIDEO ? of.channel.title : of.title;
+        p.shelves.add(new Item.Shelf("More like " + label, keep));
         p.grid = 0;
         return p;
     }
