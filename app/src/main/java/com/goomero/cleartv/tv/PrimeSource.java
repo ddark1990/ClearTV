@@ -885,6 +885,41 @@ final class PrimeSource extends Source {
         return open(item);
     }
 
+    @Override
+    public boolean hasSimilar(Item it) {
+        return detailOf(it) != null;
+    }
+
+    /** The title page that carries the similar rows: the tile's own, else an episode's show page. */
+    private Item detailOf(Item it) {
+        if (it == null) return null;
+        if (opensDetail(it)) return it;
+        return it.channel != null && opensDetail(it.channel) ? it.channel : null;
+    }
+
+    /** The title page's own "Customers also watched"-style rows (Prime Video's), gathered into one grid. */
+    @Override
+    public Item.Page similar(Item it) throws IOException {
+        Item d = detailOf(it);
+        if (d == null) throw new IOException("Prime Video has no similar titles for this.");
+        Item.Page page = open(d);
+        String[] labels = Config.list("prime.similar.labels", "customers also watched", "more like this",
+                "you might also like", "related", "similar");
+        List<Item> found = new ArrayList<>();
+        List<String> titles = new ArrayList<>();
+        for (Item.Shelf s : page.shelves) {
+            titles.add(s.title);
+            String t = s.title.toLowerCase(java.util.Locale.ROOT);
+            for (String l : labels) {
+                if (!t.contains(l)) continue;
+                found.addAll(s.items);
+                break;
+            }
+        }
+        Log.i(TAG, "more like " + d.id + ": " + found.size() + " (rows " + titles + ")");
+        return similarPage(it, found, name());
+    }
+
     /** Prime Video has no channels or creators; an episode's show page is the closest. Movies and stations have none. */
     @Override
     public String channelLabel() {

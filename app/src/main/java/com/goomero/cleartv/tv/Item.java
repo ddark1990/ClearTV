@@ -28,6 +28,13 @@ public final class Item {
     public Item channel;
     /** Share already watched (0..1) on a Continue watching tile, drawn as a bar along the artwork; 0 for none. */
     public float progress;
+    /**
+     * The service's own "don't recommend this channel" feedback for the tile (YouTube's tile menu, signed in) and
+     * the token that takes it back, when the menu carries them; null otherwise.
+     */
+    public String hideToken, hideUndo;
+    /** Where the service keeps the tile's menu when it is fetched on demand (YouTube TV's panel), until it is read. */
+    public String hideMenu;
     /** Title and subtitle cut to the tile width (drawW), cached by ShelfView. */
     CharSequence drawTitle, drawSub;
     float drawW;

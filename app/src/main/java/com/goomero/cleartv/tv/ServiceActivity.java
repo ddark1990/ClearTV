@@ -48,6 +48,8 @@ import java.util.concurrent.Executors;
 public final class ServiceActivity extends Activity implements ShelfView.Listener {
     private static final String TAG = "CTV.Service";
     public static final String EXTRA_SERVICE = "service", EXTRA_URL = "url", EXTRA_SIGNIN = "signin", EXTRA_ITEM = "item";
+    /** With {@link #EXTRA_ITEM}: open that title's "More like this" grid instead of the title (the player's option). */
+    public static final String EXTRA_SIMILAR = "similar";
     /** Open straight into the profile picker (Settings → "switch profile"). */
     public static final String EXTRA_PROFILES = "ctvProfiles";
 
@@ -89,6 +91,11 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
     private int selectedNav = -1;
     private String navTitle = "";
     private Item.Page current;
+
+    /** The hidden-channels list ({@link HiddenChannels}) as this screen last applied it. */
+    private String hiddenStamp = "[]";
+    /** Sources that name the channel of another service's tile (all-services search), by service id. */
+    private final java.util.Map<String, Source> keySources = new java.util.HashMap<>();
     /** The Continue watching row put on top of the first section, or null when there is none. */
     private volatile Item.Shelf continueRow;
     private final ArrayList<PageState> stack = new ArrayList<>();
@@ -115,6 +122,7 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
                 refreshHero();
             }
         });
+        hiddenStamp = HiddenChannels.stamp(this);
         selectNav(0);
         if (source.id().equals("all")) openSearch();
         handleIntent(getIntent());
@@ -176,10 +184,13 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
         final Item fromHome = Library.decode(in.getStringExtra(EXTRA_ITEM));
         if (fromHome != null) {
             in.removeExtra(EXTRA_ITEM);
+            final boolean similar = in.getBooleanExtra(EXTRA_SIMILAR, false);
+            in.removeExtra(EXTRA_SIMILAR);
             main.post(new Runnable() {
                 @Override
                 public void run() {
-                    onClickItem(fromHome);
+                    if (similar) showSimilar(fromHome);
+                    else onClickItem(fromHome);
                 }
             });
             return;
@@ -567,6 +578,7 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
     protected void onRestart() {
         super.onRestart();
         refreshContinue();
+        applyHiddenChanges();
     }
 
     /** Rebuilds the Continue watching row of the first section when it is on screen. */
@@ -662,6 +674,7 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
             shelf.setPage(new Item.Page(), 0, 0);
             return;
         }
+        dropHidden(page);
         shelf.setPage(page, row, col);
         // a first part with only a row or two (Live TV): bring the next rows without waiting for focus
         if (page.more != null && shelf.nearEnd()) onNearEnd();
@@ -1070,6 +1083,7 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
                             loadingMore = false;
                             if (gen != generation || more == null || current != target) return;
                             target.more = more.more;
+                            dropHidden(more);
                             if (more.moreExtendsGrid && target.grid >= 0 && target.grid == target.shelves.size() - 1) {
                                 // a long feed (history, subscriptions): the new tiles continue the grid
                                 List<Item> add = new java.util.ArrayList<>();
@@ -1129,7 +1143,8 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
                         // skip tiles the row already has (services repeat a few across pages)
                         java.util.Set<String> have = new java.util.HashSet<>();
                         for (Item i : row.items) have.add(i.id);
-                        for (Item i : more.items) if (have.add(i.id)) row.items.add(i);
+                        List<HiddenChannels.Entry> hid = HiddenChannels.all(ServiceActivity.this);
+                        for (Item i : more.items) if (have.add(i.id) && !isHidden(i, hid)) row.items.add(i);
                         row.more = more.more;
                         shelf.rowGrew(row);
                     }
@@ -1407,6 +1422,25 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
     }
 
     /** Opens a tile in its service: Pluto TV tunes the channel, the others open their screen on the tile. */
+    /** Opens {@code it}'s "More like this" grid in its service's screen (from the player). */
+    public static void openSimilar(android.app.Activity a, String service, Item it) {
+        Intent i = new Intent(a, ServiceActivity.class);
+        i.putExtra(EXTRA_SERVICE, service);
+        i.putExtra(EXTRA_ITEM, Library.encode(it));
+        i.putExtra(EXTRA_SIMILAR, true);
+        a.startActivity(i);
+    }
+
+    /** The service's own similar titles for the tile, as a page pushed on this screen (BACK returns). */
+    private void showSimilar(final Item it) {
+        load("More like this", new Loader() {
+            @Override
+            public Item.Page run() throws IOException {
+                return source.similar(it);
+            }
+        }, true);
+    }
+
     public static void openInService(android.app.Activity a, String service, Item it) {
         Intent i;
         if (service.equals("pluto")) {
@@ -1432,6 +1466,13 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
     /** OK held (or MENU) on a tile: Play, Go to channel, Favorites (live stations), the Home watchlist and Continue watching. */
     @Override
     public void onLongClickItem(final Item it) {
+        showTileMenu(it, 0);
+    }
+
+    /** The tile whose menu is open (a menu rebuilt when its service answers later). */
+    private Item menuItem;
+
+    private void showTileMenu(final Item it, int focus) {
         final String svc = it.service != null ? it.service : source.id();
         if (svc.equals("all")) return;
         final java.util.List<String> rows = new java.util.ArrayList<>();
@@ -1450,6 +1491,45 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
                     }
                 } : null);
             } });
+        }
+        // the service's own similar titles (YouTube related videos, Tubi's You May Also Like, Prime's also-watched rows)
+        if (svc.equals(source.id()) && source.hasSimilar(it)) {
+            rows.add("More like this");
+            acts.add(new Runnable() { public void run() { showSimilar(it); } });
+        }
+        // the service's own "don't recommend this channel" (YouTube, signed in, when the tile's menu offers it);
+        // otherwise ClearTV's own "Hide channel" for a tile whose channel is known
+        final Source hs = sourceOrNew(svc);
+        final String hideLabel = hs == null ? null : hs.hideLabel(it);
+        final String[] key = hs == null ? null : hs.channelKey(it);
+        if (hideLabel != null) {
+            rows.add(hideLabel);
+            acts.add(new Runnable() { public void run() { hideChannel(svc, hs, it); } });
+        } else if (key != null) {
+            rows.add("Hide channel");
+            acts.add(new Runnable() { public void run() { markHidden(svc, hs, it, null, false); } });
+        }
+        if (hideLabel == null && hs != null && it.hideMenu != null) {
+            // the service sends the tile's menu only on request: ask now and add the entry when it answers
+            io.execute(new Runnable() {
+                @Override
+                public void run() {
+                    boolean found = false;
+                    try {
+                        found = hs.resolveHide(it);
+                    } catch (IOException e) {
+                        Log.w(TAG, svc + " tile menu: " + e.getMessage());
+                    }
+                    if (!found) return;
+                    main.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (isFinishing() || menuItem != it || !panel.isShowing()) return;
+                            showTileMenu(it, Math.max(0, panel.focusedRow()));
+                        }
+                    });
+                }
+            });
         }
         if (it.kind == Item.LIVE) {
             final boolean fav = LiveLists.isFavorite(this, svc, it.id);
@@ -1476,13 +1556,211 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
         }
         rows.add("Cancel");
         acts.add(null);
+        menuItem = it;
         panel.show(it.title, rows.toArray(new String[0]), new Panel.OnPick() {
             @Override
             public void onPick(int which) {
                 Runnable r = acts.get(which);
                 if (r != null) r.run();
             }
+        }, focus);
+    }
+
+    /** This screen's source for {@code svc}, or a new one for a tile of another service (all-services search). */
+    private Source sourceOrNew(String svc) {
+        if (svc.equals(source.id())) return source;
+        if (!svc.equals("youtube") && !svc.equals("tubi") && !svc.equals("prime")) return null;
+        return Source.create(this, svc);
+    }
+
+    /**
+     * Sends the service's "don't recommend this channel" for a tile, then takes that channel's tiles off the rows at
+     * once with a confirmation; Undo (when the service gives an undo token) takes it back and puts the tiles back.
+     */
+    private void hideChannel(final String svc, final Source hs, final Item it) {
+        if (it.hideUndo != null) {
+            sendHide(svc, hs, it);
+            return;
+        }
+        // nothing to take it back with up front: confirm first, as the service's own app does
+        panel.show(hs.hideLabel(it) + ": " + channelName(it) + "?", new String[]{"Confirm", "Go back"}, new Panel.OnPick() {
+            @Override
+            public void onPick(int which) {
+                if (which == 0) sendHide(svc, hs, it);
+            }
         });
+    }
+
+    private static String channelName(Item it) {
+        return it.channel != null && !it.channel.title.isEmpty() && !it.channel.title.equals("Channel")
+                ? it.channel.title : "this channel";
+    }
+
+    private void sendHide(final String svc, final Source hs, final Item it) {
+        io.execute(new Runnable() {
+            @Override
+            public void run() {
+                String undo = null, err = null;
+                try {
+                    undo = hs.hide(it);
+                } catch (IOException e) {
+                    Log.w(TAG, svc + " hide channel: " + e.getMessage());
+                    err = message(e);
+                }
+                final String undoToken = undo, error = err;
+                main.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (isFinishing()) return;
+                        if (error != null) {
+                            Toast.makeText(ServiceActivity.this, error, Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        markHidden(svc, hs, it, undoToken, true);
+                    }
+                });
+            }
+        });
+    }
+
+    /**
+     * Puts the tile's channel on ClearTV's hidden list and takes its tiles off the rows at once, with a confirmation:
+     * after the service's own feedback ({@code sent}) its undo token when it gave one, else (ClearTV's own hide) Undo.
+     */
+    private void markHidden(final String svc, final Source hs, final Item it, final String undoToken, final boolean sent) {
+        final String[] key = hs.channelKey(it);
+        final String name = key != null && !key[1].isEmpty() ? key[1] : channelName(it);
+        if (key != null) HiddenChannels.add(this, svc, key);
+        final Runnable restore = dropHiddenOnScreen();
+        hiddenStamp = HiddenChannels.stamp(this);
+        Log.i(TAG, svc + " hidden channel " + name + (key == null ? " (not kept: no channel on the tile)" : "")
+                + (sent ? ", sent to " + hs.name() : ", ClearTV only"));
+        String msg = sent ? "You won't see " + name + " recommended" : "Hidden: " + name;
+        if (sent && undoToken == null) {
+            Toast.makeText(this, msg + ". Settings > Hidden channels shows it again in ClearTV.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        panel.show(msg, new String[]{"OK", "Undo"}, new Panel.OnPick() {
+            @Override
+            public void onPick(int which) {
+                if (which == 1) undoHide(svc, hs, key, undoToken, restore);
+            }
+        });
+    }
+
+    /** Takes a hide back: the service's undo first (when there is one), then ClearTV's list, and the tiles return. */
+    private void undoHide(final String svc, final Source hs, final String[] key, final String undoToken, final Runnable restore) {
+        io.execute(new Runnable() {
+            @Override
+            public void run() {
+                String err = null;
+                try {
+                    if (undoToken != null) hs.undoHide(undoToken);
+                } catch (IOException e) {
+                    Log.w(TAG, svc + " undo hide channel: " + e.getMessage());
+                    err = message(e);
+                }
+                final String error = err;
+                main.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (isFinishing()) return;
+                        if (error != null) {
+                            Toast.makeText(ServiceActivity.this, error, Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        if (key != null) HiddenChannels.remove(ServiceActivity.this, svc, key);
+                        hiddenStamp = HiddenChannels.stamp(ServiceActivity.this);
+                        if (restore != null) restore.run();
+                        Toast.makeText(ServiceActivity.this, "Undone: the channel shows again", Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }
+        });
+    }
+
+    /** The hidden list changed while this screen was away (another screen, Settings): apply it to the rows. */
+    private void applyHiddenChanges() {
+        String now = HiddenChannels.stamp(this), was = hiddenStamp;
+        if (now.equals(was)) return;
+        hiddenStamp = now;
+        // only additions (the list grows at its end): drop tiles in place; a channel shown again needs fresh rows
+        if (now.startsWith(was.substring(0, was.length() - 1))) dropHiddenOnScreen();
+        else reload();
+    }
+
+    private Source keySource(String svc) {
+        if (svc.equals(source.id())) return source;
+        Source k = keySources.get(svc);
+        if (k == null && !keySources.containsKey(svc)) {
+            k = sourceOrNew(svc);
+            keySources.put(svc, k);
+        }
+        return k;
+    }
+
+    private boolean isHidden(Item x, List<HiddenChannels.Entry> hid) {
+        if (hid.isEmpty()) return false;
+        String svc = x.service != null ? x.service : source.id();
+        Source k = keySource(svc);
+        return k != null && HiddenChannels.contains(hid, svc, k.channelKey(x));
+    }
+
+    /** Takes hidden channels' tiles off a page's rows; a row they emptied goes too. True when anything was taken. */
+    private boolean dropHidden(Item.Page p) {
+        if (p == null) return false;
+        List<HiddenChannels.Entry> hid = HiddenChannels.all(this);
+        if (hid.isEmpty()) return false;
+        Item.Shelf gridShelf = p.grid >= 0 && p.grid < p.shelves.size() ? p.shelves.get(p.grid) : null;
+        boolean any = false;
+        for (int r = p.shelves.size() - 1; r >= 0; r--) {
+            Item.Shelf s = p.shelves.get(r);
+            int before = s.items.size();
+            for (int i = s.items.size() - 1; i >= 0; i--) if (isHidden(s.items.get(i), hid)) s.items.remove(i);
+            if (s.items.size() == before) continue;
+            any = true;
+            if (s.items.isEmpty() && s.more == null) p.shelves.remove(r);
+        }
+        if (any) p.grid = gridShelf == null ? -1 : p.shelves.indexOf(gridShelf);
+        return any;
+    }
+
+    /** dropHidden on the page on screen, keeping focus near where it was; returns what puts the tiles back. */
+    private Runnable dropHiddenOnScreen() {
+        final Item.Page p = current;
+        if (p == null) return null;
+        final int fr = shelf.focusRow(), fc = shelf.focusCol(), grid = p.grid;
+        final List<Item.Shelf> shelves = new ArrayList<>(p.shelves);
+        final List<List<Item>> items = new ArrayList<>();
+        for (Item.Shelf s : shelves) items.add(new ArrayList<>(s.items));
+        if (!dropHidden(p)) return null;
+        Item.Shelf fs = fr < shelves.size() ? shelves.get(fr) : null;
+        int nr = fs == null ? -1 : p.shelves.indexOf(fs), nc = 0;
+        if (nr < 0) {
+            nr = Math.min(fr, p.shelves.size() - 1);
+        } else {
+            // the same place in the row, less the tiles taken before it
+            List<Item> was = items.get(fr);
+            for (int i = 0; i < fc && i < was.size(); i++) if (fs.items.contains(was.get(i))) nc++;
+            nc = Math.min(nc, fs.items.size() - 1);
+        }
+        shelf.setPage(p, Math.max(0, nr), Math.max(0, nc));
+        if (p.isEmpty()) showStatus(p.empty.isEmpty() ? "Nothing here yet." : p.empty);
+        return new Runnable() {
+            @Override
+            public void run() {
+                if (current != p) return;
+                p.shelves.clear();
+                p.shelves.addAll(shelves);
+                for (int i = 0; i < shelves.size(); i++) {
+                    shelves.get(i).items.clear();
+                    shelves.get(i).items.addAll(items.get(i));
+                }
+                p.grid = grid;
+                status.setVisibility(View.GONE);
+                shelf.setPage(p, fr, fc);
+            }
+        };
     }
 
     private void showMenu() {

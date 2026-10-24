@@ -310,6 +310,13 @@ public final class PlayerChrome {
         c.getSharedPreferences("cleartv", android.content.Context.MODE_PRIVATE).edit().putBoolean("auto_skip_sponsor", on).apply();
     }
 
+    /** "More like this" in the options (the title's similar titles in its service); null when the service has none. */
+    public void setMoreLike(Runnable go) {
+        moreLike = go;
+    }
+
+    private Runnable moreLike;
+
     /** The next episode and how to start it; null when there is none. */
     public void setNext(String title, Runnable go) {
         nextTitle = title;
@@ -743,6 +750,10 @@ public final class PlayerChrome {
         List<String> labels = new ArrayList<>();
         final List<Runnable> actions = new ArrayList<>();
         target.options(labels, actions);
+        if (moreLike != null) {
+            labels.add("More like this");
+            actions.add(moreLike);
+        }
         if (labels.isEmpty()) return;
         show();
         panel.show("Options", labels.toArray(new String[0]), new Panel.OnPick() {

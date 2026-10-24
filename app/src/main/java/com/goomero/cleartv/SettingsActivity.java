@@ -285,6 +285,17 @@ public final class SettingsActivity extends Activity {
             }
         });
         add(new Row() {
+            public String label() {
+                return "Hidden channels"
+                        + "\nChannels you chose Don't recommend or Hide channel for; their videos stay off ClearTV's rows. OK to show one again";
+            }
+            public String value() {
+                int n = com.goomero.cleartv.tv.HiddenChannels.all(SettingsActivity.this).size();
+                return n == 0 ? "None" : String.valueOf(n);
+            }
+            public void onClick() { editHiddenChannels(); }
+        });
+        add(new Row() {
             public String label() { return "Hover previews"; }
             public String value() { return onOff(com.goomero.cleartv.tv.HoverPreview.enabled(SettingsActivity.this)); }
             public void onClick() {
@@ -718,6 +729,40 @@ public final class SettingsActivity extends Activity {
                 render();
             }
         }, 300);
+    }
+
+    private void editHiddenChannels() {
+        final java.util.List<com.goomero.cleartv.tv.HiddenChannels.Entry> list = com.goomero.cleartv.tv.HiddenChannels.all(this);
+        if (list.isEmpty()) {
+            Toast.makeText(this, "No hidden channels", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String[] rows = new String[list.size() + 1];
+        for (int i = 0; i < list.size(); i++) {
+            com.goomero.cleartv.tv.HiddenChannels.Entry e = list.get(i);
+            rows[i] = "Show again: " + (e.name.isEmpty() ? e.id : e.name) + " (" + serviceName(e.service) + ")";
+        }
+        rows[list.size()] = "Close";
+        panel.show("Hidden channels", rows, new Panel.OnPick() {
+            @Override
+            public void onPick(int which) {
+                if (which >= list.size()) return;
+                com.goomero.cleartv.tv.HiddenChannels.Entry e = list.get(which);
+                com.goomero.cleartv.tv.HiddenChannels.remove(SettingsActivity.this, e);
+                Toast.makeText(SettingsActivity.this, (e.name.isEmpty() ? e.id : e.name)
+                        + " shows in ClearTV again", Toast.LENGTH_LONG).show();
+                render();
+            }
+        });
+    }
+
+    private static String serviceName(String id) {
+        switch (id) {
+            case "youtube": return "YouTube";
+            case "tubi": return "Tubi";
+            case "prime": return "Prime Video";
+            default: return id;
+        }
     }
 
     private void editDisabledSites() {

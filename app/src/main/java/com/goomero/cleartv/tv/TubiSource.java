@@ -267,6 +267,35 @@ final class TubiSource extends Source {
         return page;
     }
 
+    @Override
+    public boolean hasSimilar(Item it) {
+        return it != null && (it.kind == Item.VIDEO || it.kind == Item.SERIES) && !it.id.isEmpty();
+    }
+
+    /** Tubi's own "You May Also Like" list for the title (an episode's: its series'). */
+    @Override
+    public Item.Page similar(Item it) throws IOException {
+        String id = it.kind == Item.VIDEO && it.channel != null && it.channel.kind == Item.SERIES && !it.channel.id.isEmpty()
+                ? it.channel.id : it.id;
+        List<Item> found = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(new String(Http.get(CONTENT + Config.s("tubi.relatedPath", "/cms/content/{id}/related")
+                    .replace("{id}", id) + "?" + q(), headers()), StandardCharsets.UTF_8));
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.optJSONObject(i);
+                if (o == null) continue;
+                String cid = o.optString("id");
+                if ("s".equals(o.optString("type"))) cid = seriesId(cid);
+                Item x = cid.isEmpty() ? null : toItem(cid, o);
+                if (x != null) found.add(x);
+            }
+        } catch (JSONException e) {
+            throw new IOException("Tubi sent an unreadable list");
+        }
+        Log.i(TAG, "more like " + id + ": " + found.size());
+        return similarPage(it, found, name());
+    }
+
     /** Tubi's series ids carry a leading 0 that the series_id field of an episode leaves out. */
     private static String seriesId(String sid) {
         if (sid == null || sid.isEmpty() || sid.equals("0")) return "";

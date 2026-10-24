@@ -151,6 +151,22 @@ public final class Launcher {
                 }
             });
         }
+        if (item != null && serviceId != null && !serviceId.isEmpty() && !serviceId.equals("all")) {
+            try {
+                if (Source.create(a, serviceId).hasSimilar(item)) {
+                    chrome.setMoreLike(new Runnable() {
+                        @Override
+                        public void run() {
+                            chrome.saveProgress();
+                            ServiceActivity.openSimilar(a, serviceId, item);
+                            a.finish();
+                        }
+                    });
+                }
+            } catch (IllegalArgumentException ignored) {
+                // a service without a native screen (Pluto TV) has no similar titles here
+            }
+        }
         loadChapters(a, chrome, item, serviceId);
         return in.getLongExtra(EXTRA_RESUME, 0);
     }

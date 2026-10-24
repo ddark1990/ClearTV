@@ -138,6 +138,69 @@ public abstract class Source {
         return it.channel;
     }
 
+    /**
+     * Label of the tile menu action that stops the tile's channel (or show) being recommended to the account, or null
+     * when the service, the account or the tile has none (no network: the menu opens at once).
+     */
+    public String hideLabel(Item it) {
+        return null;
+    }
+
+    /**
+     * True when the service has its own "similar titles" data for this tile ("More like this" in the tile and
+     * player menus). Answers from the tile alone, never the network.
+     */
+    public boolean hasSimilar(Item it) {
+        return false;
+    }
+
+    /** The service's own similar titles for the tile as one wrapping grid (background thread). */
+    public Item.Page similar(Item it) throws IOException {
+        throw new IOException(name() + " has no similar titles.");
+    }
+
+    /** One grid of similar titles, the source tile and repeats left out; an empty page says so. */
+    protected static Item.Page similarPage(Item of, List<Item> found, String name) {
+        Item.Page p = new Item.Page();
+        List<Item> keep = new java.util.ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        seen.add(of.id);
+        for (Item x : found) if (x != null && seen.add(x.id)) keep.add(x);
+        if (keep.isEmpty()) {
+            p.empty = name + " lists nothing similar for this title.";
+            return p;
+        }
+        p.shelves.add(new Item.Shelf("More like " + of.title, keep));
+        p.grid = 0;
+        return p;
+    }
+
+    /**
+     * Fetches a tile's menu when the service sends it only on request (background thread, when the menu opens);
+     * true when {@link #hideLabel} now offers the action.
+     */
+    public boolean resolveHide(Item it) throws IOException {
+        return false;
+    }
+
+    /** Sends that action for the account (background thread); returns the service's undo token, or null when it gives none. */
+    public String hide(Item it) throws IOException {
+        throw new IOException(name() + " can't do that.");
+    }
+
+    /** Takes a {@link #hide} back with its undo token (background thread). */
+    public void undoHide(String undoToken) throws IOException {
+        throw new IOException(name() + " can't undo that.");
+    }
+
+    /**
+     * The channel a tile belongs to as {id, name} (either may be empty, not both), for ClearTV's own list of hidden
+     * channels ({@link HiddenChannels}); null where the service has no channels or the tile shows none.
+     */
+    public String[] channelKey(Item x) {
+        return null;
+    }
+
     /** Label of the "Go to channel" action for this service ("Go to show" where the page is a show). */
     public String channelLabel() {
         return "Go to channel";

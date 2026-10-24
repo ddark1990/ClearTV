@@ -4,6 +4,12 @@ What changed in each ClearTV version, newest first. ClearTV is made by [ddark199
 
 Download builds from [Releases](https://github.com/ddark1990/ClearTV/releases). Found a problem? Open an [issue](https://github.com/ddark1990/ClearTV/issues); for security problems see [SECURITY.md](SECURITY.md).
 
+## 0.1.23 (2026-10-24)
+
+- **More like this:** hold OK on a title and pick **More like this** to open a row of similar titles, from the service itself: YouTube's related videos for that video, Tubi's related titles (for an episode, the show's), and Prime Video's "Customers also watched" and similar rows from the title's details. It is also in the player's **Options** menu (▲/▼ while watching); picking it there saves your place and opens the list. BACK returns to where you were. Pluto TV is live channels only and has no such data, so it doesn't show the entry.
+- **Don't recommend channel / Hide channel** (YouTube): hold OK on a YouTube video to keep that channel off your screens. Where YouTube's own menu offers "Don't recommend channel" (its Home recommendations, signed in), ClearTV asks you to confirm with the channel's name, because YouTube's TV menu has no undo, then sends it to YouTube. Elsewhere (Gaming and other topic pages, search results, signed out) the menu offers **Hide channel** instead. Either way the channel goes on ClearTV's own list of hidden channels: its videos and its channel tile leave every YouTube row at once and stay off all YouTube screens, More like this grids and the Up next queue from then on, also after leaving and reopening YouTube. YouTube's own setting is slow and doesn't cover topic pages such as Gaming, which is why a channel could come back there before. **Settings → Hidden channels** lists them; OK on one shows it again in ClearTV. Prime Video, Tubi and Pluto TV have no channels to hide.
+- The README now shows the newest features: YouTube chapters with SKIP SPONSOR and auto-skip, More like this, Continue watching inside each service and Don't recommend channel, with new screenshots.
+
 ## 0.1.22 (2026-10-23)
 
 - YouTube videos with chapters now show them: the progress bar is split into one segment per chapter with a small gap between them, and the name of the current chapter appears above the bar. While you move through the video with left/right, the name of the chapter you would land in is shown instead. Videos without chapters (and other services) look exactly as before.

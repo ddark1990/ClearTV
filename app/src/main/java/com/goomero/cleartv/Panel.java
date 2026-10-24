@@ -42,6 +42,17 @@ public final class Panel extends LinearLayout {
 
     /** Shows title and rows at the right edge, inside the overscan-safe area; the first row gets focus. */
     public void show(String title, String[] rows, final OnPick pick) {
+        show(title, rows, pick, 0);
+    }
+
+    /** The focused row's index, or -1. */
+    public int focusedRow() {
+        View f = findFocus();
+        return f == null ? -1 : indexOfChild(f) - 1;
+    }
+
+    /** Like {@link #show(String, String[], OnPick)} with row {@code focus} focused (a menu rebuilt in place). */
+    public void show(String title, String[] rows, final OnPick pick, int focus) {
         if (isShowing()) dismiss();
         removeAllViews();
         Context c = getContext();
@@ -88,7 +99,8 @@ public final class Panel extends LinearLayout {
                 Gravity.END | Gravity.TOP);
         lp.setMargins(safeX, safeY, safeX, safeY);
         host.addView(this, lp);
-        if (first != null) first.requestFocus();
+        View f = focus > 0 && focus < rows.length ? getChildAt(focus + 1) : first;
+        if (f != null) f.requestFocus();
     }
 
     public void dismiss() {

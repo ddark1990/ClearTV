@@ -34,6 +34,10 @@ final class YouTubeSource extends Source {
             TOKEN_URL, SCOPE;
     static String IOS_UA;
     private static Set<String> CAPTURE, SKIP;
+    /** SKIP without the tile menus: signed in, a tile's long-press menu carries its "Don't recommend channel". */
+    private static volatile Set<String> SKIP_MENU;
+    /** Labels of that menu entry (lower case, straight apostrophe). */
+    private static volatile String[] HIDE_LABELS;
     private static final Set<String> NONE = new HashSet<>();
     private static final String SHORTS = "shorts";
 
@@ -74,6 +78,10 @@ final class YouTubeSource extends Source {
                 Set<String> sk = new HashSet<>(SKIP);
                 sk.remove("responseContext");
                 SKIP = sk;
+                Set<String> sm = new HashSet<>(sk);
+                sm.removeAll(Arrays.asList("menu", "onLongPress", "onLongPressCommand"));
+                SKIP_MENU = sm;
+                HIDE_LABELS = Config.list("youtube.hideChannel.labels", "don't recommend channel");
             }
         });
     }
@@ -529,6 +537,230 @@ final class YouTubeSource extends Source {
         return ChapterList.fromText(desc[0]);
     }
 
+    // ------------------------------------------------------------------ more like this
+
+    @Override
+    public boolean hasSimilar(Item it) {
+        return it != null && it.kind == Item.VIDEO && it.id.matches("[A-Za-z0-9_-]{11}");
+    }
+
+    /**
+     * YouTube's own related videos for the video: the TV app's watch-next rows ("next"; the account's when signed
+     * in), gathered into one grid.
+     */
+    @Override
+    public Item.Page similar(Item it) throws IOException {
+        JSONObject extra;
+        try {
+            extra = new JSONObject().put("videoId", it.id);
+        } catch (JSONException e) {
+            throw new IOException(e);
+        }
+        Item.Page p = shelves("next", extra);
+        List<Item> all = new ArrayList<>();
+        for (Item.Shelf s : p.shelves) for (Item x : s.items) if (x.kind == Item.VIDEO || x.kind == Item.LIVE) all.add(x);
+        Log.i(TAG, "more like " + it.id + ": " + all.size() + " from " + p.shelves.size() + " rows");
+        return similarPage(it, all, name());
+    }
+
+    // ------------------------------------------------------------------ don't recommend channel
+
+    /** Menus described in the log per answer while the entry is not found (labels only, never tokens). */
+    private static volatile int menuLogs;
+
+    /**
+     * Reads a video tile's long-press menu (kept only when signed in): the "Don't recommend channel" entry's
+     * feedback token and, when the entry carries one, its undo token; and the channel from "Go to channel".
+     */
+    private static void readMenu(Item it, JSONObject menu, JSONObject tile) {
+        if (it == null || (it.kind != Item.VIDEO && it.kind != Item.LIVE)) return;
+        if (menu == null) {
+            if (menuLogs < 2) {
+                menuLogs++;
+                Log.i(TAG, "tile without a long-press menu: " + keysOf(tile, 0));
+            }
+            return;
+        }
+        String[] ch = {null};
+        List<String> labels = new ArrayList<>();
+        readMenu(it, menu, ch, labels, 0);
+        if (it.channel == null && ch[0] != null) it.channel = channelTile(ch[0], channelName(it.subtitle));
+        if (it.hideToken == null && it.hideMenu == null && menuLogs < 2) {
+            menuLogs++;
+            Log.i(TAG, "tile menu without don't-recommend-channel: " + labels + " " + keysOf(menu, 0));
+        }
+    }
+
+    private static void readMenu(Item it, Object o, String[] ch, List<String> labels, int depth) {
+        if (depth > 40 || it.hideToken != null) return;
+        if (o instanceof JSONArray) {
+            JSONArray a = (JSONArray) o;
+            for (int i = 0; i < a.length(); i++) readMenu(it, a.opt(i), ch, labels, depth + 1);
+            return;
+        }
+        if (!(o instanceof JSONObject)) return;
+        JSONObject j = (JSONObject) o;
+        // the TV app's long press opens a panel fetched on demand (get_panel): remember how to ask for it
+        JSONObject sp = j.optJSONObject("showEngagementPanelEndpoint");
+        if (sp != null && it.hideMenu == null) {
+            String tag = sp.optString("panelIdentifier", "");
+            if (tag.isEmpty()) tag = JsonScan.path(sp, "identifier") == null ? "" : sp.optJSONObject("identifier").optString("tag", "");
+            String params = JsonScan.path(sp, "globalConfiguration") == null ? ""
+                    : sp.optJSONObject("globalConfiguration").optString("params", "");
+            if (!tag.isEmpty() || !params.isEmpty()) it.hideMenu = tag + "\n" + params;
+        }
+        JSONObject b = j.optJSONObject("browseEndpoint");
+        if (ch[0] == null && b != null && b.optString("browseId").startsWith("UC")) ch[0] = b.optString("browseId");
+        String label = menuLabel(j);
+        if (!label.isEmpty()) {
+            if (labels.size() < 12) labels.add(label);
+            if (isHideLabel(label)) {
+                JSONObject fe = findKey(j, "feedbackEndpoint", 0);
+                if (fe != null && !fe.optString("feedbackToken").isEmpty()) {
+                    it.hideToken = fe.optString("feedbackToken");
+                    JSONObject undo = findKey(j, "undoFeedbackEndpoint", 0);
+                    if (undo != null && !undo.optString("undoToken").isEmpty()) it.hideUndo = undo.optString("undoToken");
+                    return;
+                }
+            }
+        }
+        for (java.util.Iterator<String> i = j.keys(); i.hasNext(); ) readMenu(it, j.opt(i.next()), ch, labels, depth + 1);
+    }
+
+    /** The key outline of a JSON object (keys only, three levels), for the log. */
+    private static String keysOf(Object o, int depth) {
+        if (!(o instanceof JSONObject) || depth > 2) return "";
+        StringBuilder b = new StringBuilder("{");
+        JSONObject j = (JSONObject) o;
+        for (java.util.Iterator<String> i = j.keys(); i.hasNext(); ) {
+            String k = i.next();
+            b.append(k).append(keysOf(j.opt(k), depth + 1)).append(i.hasNext() ? "," : "");
+        }
+        return b.append("}").toString();
+    }
+
+    /** The text of a menu entry (menuServiceItemRenderer "text", listItemViewModel "title"), else empty. */
+    private static String menuLabel(JSONObject j) {
+        for (String k : new String[]{"text", "title"}) {
+            JSONObject t = j.optJSONObject(k);
+            if (t != null) {
+                String s = JsonScan.text(t);
+                if (!s.isEmpty()) return s;
+            }
+        }
+        return "";
+    }
+
+    private static boolean isHideLabel(String label) {
+        String l = label.toLowerCase(java.util.Locale.ROOT).replace('\u2019', '\'');
+        for (String h : HIDE_LABELS) if (l.contains(h)) return true;
+        return false;
+    }
+
+    /** The channel part of a tile's second line ("Channel · 1M views · 2 days ago"). */
+    private static String channelName(String sub) {
+        int dot = sub.indexOf(" · ");
+        return (dot < 0 ? sub : sub.substring(0, dot)).trim();
+    }
+
+    /** Fetches the tile's menu panel (get_panel, as the TV app does on a long press) and reads the entry from it. */
+    @Override
+    public boolean resolveHide(Item it) throws IOException {
+        if (it.hideToken != null) return true;
+        String m = it.hideMenu;
+        if (m == null || !signedIn()) return false;
+        int nl = m.indexOf('\n');
+        JSONObject body;
+        try {
+            JSONObject req = new JSONObject();
+            if (nl > 0) req.put("panelId", m.substring(0, nl));
+            if (nl + 1 < m.length()) req.put("params", m.substring(nl + 1));
+            body = tvContext(req);
+        } catch (JSONException e) {
+            throw new IOException(e);
+        }
+        JSONObject o;
+        try (Http.Response r = call("get_panel", body, true)) {
+            o = new JSONObject(new String(Http.readAll(r.body, 2 << 20), StandardCharsets.UTF_8));
+        } catch (JSONException e) {
+            throw new IOException("YouTube's menu could not be read.");
+        }
+        it.hideMenu = null;
+        String[] ch = {null};
+        List<String> labels = new ArrayList<>();
+        readMenu(it, o, ch, labels, 0);
+        if (it.channel == null && ch[0] != null) it.channel = channelTile(ch[0], channelName(it.subtitle));
+        Log.i(TAG, "tile menu " + labels + (it.hideToken == null ? ": no don't-recommend-channel"
+                : ": don't recommend channel" + (it.hideUndo != null ? " (with undo)" : "")));
+        return it.hideToken != null;
+    }
+
+    @Override
+    public String hideLabel(Item it) {
+        return it.hideToken != null && signedIn() ? "Don't recommend channel" : null;
+    }
+
+    /** Posts the tile's feedback token to youtubei "feedback", as the TV app's menu does; returns the undo token. */
+    @Override
+    public String hide(Item it) throws IOException {
+        if (it.hideToken == null) throw new IOException("YouTube gave no option for this video.");
+        JSONObject o = feedback(it.hideToken);
+        if (it.hideUndo != null) return it.hideUndo;
+        JSONObject undo = findKey(o, "undoFeedbackEndpoint", 0);
+        return undo == null || undo.optString("undoToken").isEmpty() ? null : undo.optString("undoToken");
+    }
+
+    @Override
+    public void undoHide(String undoToken) throws IOException {
+        feedback(undoToken);
+    }
+
+    private JSONObject feedback(String token) throws IOException {
+        if (!signedIn()) throw new IOException("Sign in to YouTube first.");
+        JSONObject body;
+        try {
+            body = tvContext(new JSONObject().put("feedbackTokens", new JSONArray().put(token))
+                    .put("isFeedbackTokenUnencrypted", false).put("shouldMerge", false));
+        } catch (JSONException e) {
+            throw new IOException(e);
+        }
+        JSONObject o;
+        int code;
+        // the token comes from the TV client's own menu (get_panel), so it goes back with the same TV context and sign-in
+        Log.i(TAG, "feedback: sending a " + token.length() + "-char token, TV client, signed in");
+        try (Http.Response r = call("feedback", body, true)) {
+            code = r.code;
+            o = new JSONObject(new String(Http.readAll(r.body, 256 << 10), StandardCharsets.UTF_8));
+        } catch (Http.Error e) {
+            Log.w(TAG, "feedback: HTTP " + e.code);
+            throw e;
+        } catch (JSONException e) {
+            throw new IOException("YouTube's answer could not be read.");
+        }
+        JSONArray rs = o.optJSONArray("feedbackResponses");
+        boolean ok = rs != null && rs.length() > 0 && rs.optJSONObject(0) != null && rs.optJSONObject(0).optBoolean("isProcessed");
+        Log.i(TAG, "feedback: HTTP " + code + ", feedbackResponses " + (rs == null ? "none" : clip(rs.toString()))
+                + ", processed " + ok + " " + keysOf(o, 1));
+        if (!ok) throw new IOException("YouTube didn't take it. Try again later.");
+        return o;
+    }
+
+    private static String clip(String s) {
+        return s.length() > 160 ? s.substring(0, 160) + "…" : s;
+    }
+
+    @Override
+    public String[] channelKey(Item x) {
+        if (x.kind == Item.CHANNEL) return x.id.startsWith("UC") ? new String[]{x.id, x.title} : null;
+        if (x.kind != Item.VIDEO && x.kind != Item.LIVE) return null;
+        String id = x.channel != null && x.channel.id.startsWith("UC") ? x.channel.id : "";
+        String n = x.channel != null && !x.channel.title.equals("Channel") ? x.channel.title : "";
+        if (n.isEmpty()) n = channelName(x.subtitle);
+        // a second line without the channel ("1M views", "3 days ago") names no channel
+        if (n.matches("(?i).*\\d.*\\b(views?|watching|ago)\\b.*")) n = "";
+        return id.isEmpty() && n.isEmpty() ? null : new String[]{id, n};
+    }
+
     private static Item channelTile(String id, String name) {
         return new Item(Item.CHANNEL, id, name.isEmpty() ? "Channel" : name, "", "", "", "");
     }
@@ -595,7 +827,8 @@ final class YouTubeSource extends Source {
         }
         {
             JsonReader jr = new JsonReader(new InputStreamReader(new java.io.ByteArrayInputStream(raw), StandardCharsets.UTF_8));
-            JsonScan.scan(jr, CAPTURE, NONE, SKIP, new JsonScan.Sink() {
+            menuLogs = 0;
+            JsonScan.scan(jr, CAPTURE, NONE, auth && signedIn() ? SKIP_MENU : SKIP, new JsonScan.Sink() {
                 @Override
                 public void onValue(String key, String name, JSONObject v) {
                     switch (key) {
@@ -933,7 +1166,9 @@ final class YouTubeSource extends Source {
             }
         }
         JSONObject cmd = t.optJSONObject("onSelectCommand");
-        return fromCommand(cmd, title, sub.toString(), image, badge, t.optString("contentType"));
+        Item it = fromCommand(cmd, title, sub.toString(), image, badge, t.optString("contentType"));
+        readMenu(it, t.optJSONObject("onLongPressCommand"), t);
+        return it;
     }
 
     private static Item parseLockup(JSONObject l) {
@@ -968,7 +1203,9 @@ final class YouTubeSource extends Source {
             }
         }
         JSONObject cmd = JsonScan.path(l, "rendererContext", "commandContext", "onTap", "innertubeCommand");
-        return fromCommand(cmd, title, sub.toString(), image, badge, l.optString("contentType"));
+        Item it = fromCommand(cmd, title, sub.toString(), image, badge, l.optString("contentType"));
+        readMenu(it, JsonScan.path(l, "rendererContext", "commandContext", "onLongPress"), l);
+        return it;
     }
 
     private static Item fromCommand(JSONObject cmd, String title, String sub, String image, String badge, String type) {
