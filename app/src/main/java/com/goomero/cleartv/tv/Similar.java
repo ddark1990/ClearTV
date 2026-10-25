@@ -23,6 +23,8 @@ final class Similar {
         String id = "", name = "", image = "";
         final List<Item> items = new ArrayList<>();
         double score;
+        /** How well the group's videos match the source video's descriptor (0-1), when ranked by one. */
+        double match;
         int lists, first = Integer.MAX_VALUE;
 
         Group(String key) {
@@ -83,18 +85,23 @@ final class Similar {
         return groups.get(k);
     }
 
+    /** Scores a group's fit (0-1) and may reorder the copy's tiles, best first. */
+    interface Fit {
+        double of(Group g);
+    }
+
     /** Groups by score (ties: the one found first), copied so the caller may read them while more lists arrive. */
     synchronized List<Group> ranked() {
-        List<Group> out = new ArrayList<>(groups.values());
-        Collections.sort(out, new Comparator<Group>() {
-            @Override
-            public int compare(Group a, Group b) {
-                int c = Double.compare(b.score, a.score);
-                return c != 0 ? c : Integer.compare(a.first, b.first);
-            }
-        });
-        List<Group> copy = new ArrayList<>(out.size());
-        for (Group g : out) {
+        return ranked(null, 0, 0);
+    }
+
+    /**
+     * Groups by score blended with their {@code fit} (none: by score alone), copied as {@link #ranked()}: the score
+     * loses up to {@code miss} of itself as the fit falls to 0, and gains {@code weight} times the fit.
+     */
+    synchronized List<Group> ranked(Fit fit, double weight, double miss) {
+        List<Group> out = new ArrayList<>(groups.size());
+        for (Group g : groups.values()) {
             Group c = new Group(g.key);
             c.id = g.id;
             c.name = g.name;
@@ -103,9 +110,20 @@ final class Similar {
             c.score = g.score;
             c.lists = g.lists;
             c.first = g.first;
-            copy.add(c);
+            if (fit != null) {
+                c.match = fit.of(c);
+                c.score = c.score * (1 - miss * (1 - c.match)) + weight * c.match;
+            }
+            out.add(c);
         }
-        return copy;
+        Collections.sort(out, new Comparator<Group>() {
+            @Override
+            public int compare(Group a, Group b) {
+                int c = Double.compare(b.score, a.score);
+                return c != 0 ? c : Integer.compare(a.first, b.first);
+            }
+        });
+        return out;
     }
 
     private static final Pattern SEASON = Pattern.compile(

@@ -924,7 +924,7 @@ public final class PlutoActivity extends Activity implements GuideView.Listener 
     }
 
     /**
-     * OK held on a channel (guide row or full screen): Go to channel (full screen on it), watch in the preview or
+     * OK held on a channel (guide row or full screen): Watch full screen, watch in the preview or
      * back to the guide, Favorites, Home watchlist.
      */
     private void channelMenu(final PlutoApi.Channel c) {
@@ -936,7 +936,7 @@ public final class PlutoActivity extends Activity implements GuideView.Listener 
         final java.util.List<Runnable> acts = new java.util.ArrayList<>();
         if (!watching) {
             // the channel full screen, like OK on the channel that is already playing
-            rows.add("Go to channel");
+            rows.add("Watch full screen");
             acts.add(new Runnable() { public void run() { goToChannel(c); } });
         }
         rows.add(watching ? "Back to the guide" : "Watch now");
@@ -972,7 +972,7 @@ public final class PlutoActivity extends Activity implements GuideView.Listener 
         });
     }
 
-    /** Go to channel: tune it (unless it already plays) and show it full screen. */
+    /** Watch full screen: tune it (unless it already plays) and show it full screen. */
     private void goToChannel(PlutoApi.Channel c) {
         if (!isPlaying(c)) tune(c);
         else commitHover();

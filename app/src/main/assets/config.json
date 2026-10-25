@@ -61,6 +61,35 @@
    "browse": "FEtopics_music",
    "search": "news",
    "video": "jNQXAC9e7gk"
+  },
+  "similar": {
+   "seeds": 4,
+   "channels": 30,
+   "channelTiles": 20,
+   "ownVideos": 6,
+   "moreVideos": 40,
+   "firstMs": 8000,
+   "secondMs": 5000,
+   "metaMs": 400,
+   "movies": 20,
+   "avatarLookups": 20,
+   "searches": 2,
+   "searchWeight": 30,
+   "descriptor": {
+    "tag": 3,
+    "hashtag": 3,
+    "topic": 3.5,
+    "title": 2,
+    "chapter": 1,
+    "description": 0.6,
+    "category": 0.4,
+    "phrase": 1.25,
+    "idfFloor": 0.25,
+    "terms": 24,
+    "searchFit": 0.5,
+    "fitWeight": 2,
+    "miss": 0.6
+   }
   }
  },
  "tubi": {

@@ -229,13 +229,19 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
     private void buildUi() {
         Context c = this;
         root = new FrameLayout(c);
-        root.setBackgroundColor(Ui.BG);
-        // the hint of the service's theme: a soft wash of its colour from the top left
-        View wash = new View(c);
-        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{(Ui.serviceAccent(source.accent2()) & 0x00FFFFFF) | 0x38000000, (Ui.serviceAccent(source.accent2()) & 0x00FFFFFF) | 0x0A000000, 0x00000000});
-        wash.setBackground(g);
-        root.addView(wash, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // the background with the hint of the service's theme, a soft wash of its colour from the top left, painted
+        // as one opaque gradient (the colour already mixed into the background) rather than a second full-screen layer
+        int tint = Ui.serviceAccent(source.accent2());
+        if ((Ui.BG >>> 24) == 0xFF) {
+            root.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                    new int[]{mix(Ui.BG, tint, 0x38), mix(Ui.BG, tint, 0x0A), Ui.BG}));
+        } else {
+            root.setBackgroundColor(Ui.BG);
+            View wash = new View(c);
+            wash.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                    new int[]{(tint & 0x00FFFFFF) | 0x38000000, (tint & 0x00FFFFFF) | 0x0A000000, 0x00000000}));
+            root.addView(wash, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        }
 
         // title pages: the title's artwork top right, fading into the background on its left and bottom edges
         heroBox = new FrameLayout(c);
@@ -428,7 +434,17 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
 
         panel = new Panel(c, root);
         setContentView(root);
+        // the opaque root covers the whole window: the window's own background fill under it is wasted drawing
+        if ((Ui.BG >>> 24) == 0xFF) getWindow().setBackgroundDrawable(null);
         updateAccountItem();
+    }
+
+    /** {@code over} at alpha {@code a} (0-255) on the opaque {@code base}. */
+    private static int mix(int base, int over, int a) {
+        int r = (((base >> 16) & 0xFF) * (255 - a) + ((over >> 16) & 0xFF) * a) / 255;
+        int g = (((base >> 8) & 0xFF) * (255 - a) + ((over >> 8) & 0xFF) * a) / 255;
+        int b = ((base & 0xFF) * (255 - a) + (over & 0xFF) * a) / 255;
+        return 0xFF000000 | (r << 16) | (g << 8) | b;
     }
 
     private Drawable focusBg(int normal) {
@@ -1818,6 +1834,7 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
         io.shutdownNow();
         images.shutdown();
         heroImages.shutdown();
+        if (preview != null) preview.release();
         super.onDestroy();
     }
 }

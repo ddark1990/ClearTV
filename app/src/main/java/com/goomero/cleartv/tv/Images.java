@@ -56,13 +56,20 @@ public final class Images {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final HashSet<String> pending = new HashSet<>();
     private final HashSet<String> failed = new HashSet<>();
-    private final ExecutorService pool = new ThreadPoolExecutor(3, 3, 30, TimeUnit.SECONDS,
-            new LinkedBlockingDeque<Runnable>() {
-                @Override
-                public boolean offer(Runnable r) {
-                    return offerFirst(r);
-                }
-            });
+    private final ExecutorService pool = newPool();
+
+    /** Three loaders, newest request first; idle ones end after 30 s instead of staying for the app's life. */
+    private static ExecutorService newPool() {
+        ThreadPoolExecutor p = new ThreadPoolExecutor(3, 3, 30, TimeUnit.SECONDS,
+                new LinkedBlockingDeque<Runnable>() {
+                    @Override
+                    public boolean offer(Runnable r) {
+                        return offerFirst(r);
+                    }
+                });
+        p.allowCoreThreadTimeOut(true);
+        return p;
+    }
     private final LruCache<String, Bitmap> cache = new LruCache<String, Bitmap>(10 * 1024 * 1024) {
         @Override
         protected int sizeOf(String k, Bitmap b) {

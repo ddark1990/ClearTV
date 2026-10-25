@@ -11,6 +11,7 @@ b=$(( $(tr -d '[:space:]' < BUILD 2>/dev/null || echo 0) + 1 )); echo "$b" > BUI
 tools/compile_filters.sh
 tools/enginetest/run.sh --no-heap
 tools/themetest/run.sh
+tools/similartest/run.sh
 ./gradlew --no-daemon clean assembleRelease lintRelease
 v="$(tr -d '[:space:]' < VERSION)"
 mkdir -p dist

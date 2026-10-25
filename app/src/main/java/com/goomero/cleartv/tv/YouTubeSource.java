@@ -108,10 +108,16 @@ final class YouTubeSource extends Source {
         p.subtitle = item.subtitle;
         Item v = isMovie(item) ? new Item(Item.VIDEO, item.id.substring(2), item.title, item.subtitle, item.image,
                 item.badge, "") : item;
+        // a video that just had no clear stream goes straight to the embed player on the next hover (each check is
+        // one or two player calls to YouTube)
+        if (noClearStream(v.id)) {
+            Log.i(TAG, "preview " + v.id + ": no clear stream (remembered)");
+            return p;
+        }
         iosHls(v, p);
         // on-demand videos: the iOS client often answers without HLS on home connections; the VR client's muxed
         // 360p MP4 (itag 18: plain H.264/AAC, no ads, no DRM) is plenty for a muted preview
-        if (p.hls == null && v.kind == Item.VIDEO) {
+        if (p.hls == null && v.kind == Item.VIDEO && System.currentTimeMillis() >= vrRefusedUntil) {
             // (YouTube may answer LOGIN_REQUIRED here on some home connections; the account's TV sign-in is not
             // accepted by this client, so the preview then falls back to the muted embed player)
             String mp4 = vrProgressive(v.id, false);
@@ -121,6 +127,7 @@ final class YouTubeSource extends Source {
                 p.live = false;
             }
         }
+        if (p.hls == null) rememberNoClearStream(v.id);
         Log.i(TAG, "preview " + v.id + ": " + (p.hls == null ? "no clear stream (artwork)" : p.hls.contains(".m3u8") || p.hls.contains("manifest") ? "HLS" : "MP4"));
         return p;
     }
@@ -135,6 +142,33 @@ final class YouTubeSource extends Source {
                 + "</head><body><iframe allow=\"autoplay; encrypted-media\" referrerpolicy=\"strict-origin-when-cross-origin\" src=\"https://www.youtube.com/embed/"
                 + id + "?autoplay=1&mute=1&controls=0&disablekb=1&rel=0&fs=0&playsinline=1&iv_load_policy=3&cc_load_policy=0&modestbranding=1&vq=small"
                 + "&origin=https%3A%2F%2Fcom.goomero.cleartv\"></iframe></body></html>";
+    }
+
+    private static final long NO_STREAM_MS = 10 * 60_000;
+    /** Until when the VR client is skipped: it answered LOGIN_REQUIRED, which it then does for every video. */
+    private static volatile long vrRefusedUntil;
+    /** Video ids that had no clear stream lately, oldest first, with the time they were checked. */
+    private static final Map<String, Long> NO_STREAM = new java.util.LinkedHashMap<String, Long>(64, 0.75f, false) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Long> e) {
+            return size() > 200;
+        }
+    };
+
+    private static boolean noClearStream(String id) {
+        synchronized (NO_STREAM) {
+            Long t = NO_STREAM.get(id);
+            if (t == null) return false;
+            if (System.currentTimeMillis() - t < NO_STREAM_MS) return true;
+            NO_STREAM.remove(id);
+            return false;
+        }
+    }
+
+    private static void rememberNoClearStream(String id) {
+        synchronized (NO_STREAM) {
+            NO_STREAM.put(id, System.currentTimeMillis());
+        }
     }
 
     private static final String VR_UA = "com.google.android.apps.youtube.vr.oculus/1.62.27 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip";
@@ -159,7 +193,9 @@ final class YouTubeSource extends Source {
                 JSONObject x = f.optJSONObject(i);
                 if (x != null && !x.optString("url").isEmpty()) return x.optString("url");
             }
-            Log.i(TAG, "preview " + id + ": VR client" + (auth ? " (account) " : " ") + (JsonScan.path(o, "playabilityStatus") == null ? "?" : o.optJSONObject("playabilityStatus").optString("status")));
+            String status = JsonScan.path(o, "playabilityStatus") == null ? "?" : o.optJSONObject("playabilityStatus").optString("status");
+            if (!auth && "LOGIN_REQUIRED".equals(status)) vrRefusedUntil = System.currentTimeMillis() + NO_STREAM_MS;
+            Log.i(TAG, "preview " + id + ": VR client" + (auth ? " (account) " : " ") + status);
         } catch (IOException | JSONException e) {
             Log.w(TAG, "preview " + id + ": " + e.getMessage());
         }
@@ -462,12 +498,19 @@ final class YouTubeSource extends Source {
             }
             JSONObject owner = findKey(new JSONObject(raw), "videoOwnerRenderer", 0);
             JSONObject be = owner == null ? null : JsonScan.path(owner, "navigationEndpoint", "browseEndpoint");
+            String title = owner == null ? "" : JsonScan.text(owner.optJSONObject("title"));
+            if (owner != null && (be == null || !be.optString("browseId", "").startsWith("UC"))) {
+                // a collaboration: the owner opens a picker of the creators instead of a channel; the first is the uploader
+                JSONObject first = findKey(owner, "listItemViewModel", 0);
+                be = findKey(first != null ? first : owner, "browseEndpoint", 0);
+                String t = first == null ? "" : JsonScan.text(first.optJSONObject("title"));
+                if (!t.isEmpty()) title = t;
+            }
             ch = be == null ? "" : be.optString("browseId", "");
             if (!ch.startsWith("UC")) {
                 Log.i(TAG, "no channel for " + it.id);
                 return null;
             }
-            String title = JsonScan.text(owner.optJSONObject("title"));
             return channelTile(ch, title.isEmpty() ? name : title);
         } catch (JSONException e) {
             throw new IOException("YouTube sent an unreadable video answer");
@@ -554,7 +597,10 @@ final class YouTubeSource extends Source {
      * parallel: the TV app's watch-next rows ("next", the account's when signed in), the web watch page's related
      * column (signed out; it names each video's channel) and, as a second round, the related columns of the first
      * few videos from other channels. Channels are ranked by how often and how high they turn up across those lists;
-     * the source channel and hidden channels are left out of the new-channel rows. Rows: one video per new channel,
+     * the source channel and hidden channels are left out of the new-channel rows. The video's own metadata (tags,
+     * hashtags, linked game or topic, title, description, chapters: see {@link Descriptor}) adds a few searches for
+     * channels those lists miss and ranks every candidate channel by how well its videos match it, so a small channel
+     * on the same topic can beat a big general one. Rows: one video per new channel,
      * the new channels themselves, a short row from the source channel, then more videos from the new channels.
      * The first round's rows go to {@code progress} as soon as they are in.
      */
@@ -562,7 +608,7 @@ final class YouTubeSource extends Source {
     public Item.Page similar(final Item it, Progress progress) throws IOException {
         final long t0 = android.os.SystemClock.uptimeMillis();
         java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(
-                Math.max(2, Config.i("youtube.similar.seeds", 4)) + 4);
+                Math.max(2, Config.i("youtube.similar.seeds", 4)) + Math.max(0, Config.i("youtube.similar.searches", 2)) + 4);
         try {
             java.util.concurrent.Future<List<Item>> tvF = pool.submit(new java.util.concurrent.Callable<List<Item>>() {
                 @Override
@@ -586,7 +632,14 @@ final class YouTubeSource extends Source {
             java.util.concurrent.Future<WebRelated> webF = pool.submit(new java.util.concurrent.Callable<WebRelated>() {
                 @Override
                 public WebRelated call() throws IOException {
-                    return webRelated(it.id);
+                    return webRelated(it.id, false, true);
+                }
+            });
+            // the video's own metadata for the descriptor (the web player answer, ~10 KB, without streams)
+            java.util.concurrent.Future<Descriptor.Source> metaF = pool.submit(new java.util.concurrent.Callable<Descriptor.Source>() {
+                @Override
+                public Descriptor.Source call() throws IOException {
+                    return webMeta(it.id);
                 }
             });
             long wait = Config.i("youtube.similar.firstMs", 8000);
@@ -614,7 +667,24 @@ final class YouTubeSource extends Source {
             final Mix mix = new Mix(it, srcId, srcName, HiddenChannels.of(app, id()));
             if (web != null) mix.add(web.items, 1.0);
             if (tv != null) mix.add(tv, 1.0);
-            if (progress != null) progress.partial(mix.page(false));
+            // the descriptor: the web player's metadata (usually in long before the lists), the web page's linked
+            // games and music; a video without it is ranked by the lists alone
+            Descriptor.Source meta = null;
+            try {
+                meta = await(metaF, t1 + Config.i("youtube.similar.metaMs", 400));
+            } catch (IOException e) {
+                Log.w(TAG, "more like: no metadata: " + e.getMessage());
+            }
+            long tMeta = android.os.SystemClock.uptimeMillis() - t0;
+            if (meta != null) {
+                if (meta.title.isEmpty()) meta.title = it.title;
+                if (meta.owner.isEmpty()) meta.owner = srcName;
+                if (web != null) {
+                    meta.topics.addAll(web.games);
+                    if ("Music".equals(meta.category)) meta.topics.addAll(web.music);
+                }
+                mix.describe(new Descriptor(meta, mix.weights));
+            }
             // second round: the related columns of the best videos from other channels
             List<String> seeds = mix.seeds(Config.i("youtube.similar.seeds", 4), tv, web == null ? null : web.items);
             List<java.util.concurrent.Future<WebRelated>> hops = new ArrayList<>();
@@ -624,6 +694,18 @@ final class YouTubeSource extends Source {
                     return webRelated(v);
                 }
             }));
+            // searches from the descriptor's strongest phrases, for channels the related lists miss
+            final List<String> queries = mix.queries(Config.i("youtube.similar.searches", 2));
+            List<java.util.concurrent.Future<List<Item>>> finds = new ArrayList<>();
+            for (final String q : queries) finds.add(pool.submit(new java.util.concurrent.Callable<List<Item>>() {
+                @Override
+                public List<Item> call() throws IOException {
+                    return webSearch(q, mix.snippets);
+                }
+            }));
+            // the first rows, while the second round loads (the page also lists the channels that need a picture)
+            if (progress != null) progress.partial(mix.page(false));
+            long tFirst = android.os.SystemClock.uptimeMillis() - t0;
             // channel tiles whose channel came without a picture (a TV tile names only the channel): the owner's
             // avatar from the start of that video's web watch data, read only up to the owner
             List<java.util.concurrent.Future<WebRelated>> looks = new ArrayList<>();
@@ -649,6 +731,18 @@ final class YouTubeSource extends Source {
                     Log.w(TAG, "more like: a second list failed: " + e.getMessage());
                 }
             }
+            long tHops = android.os.SystemClock.uptimeMillis() - t0;
+            int found = 0;
+            for (java.util.concurrent.Future<List<Item>> f : finds) {
+                try {
+                    List<Item> l = await(f, until);
+                    mix.addFound(l, Config.i("youtube.similar.searchWeight", 30) / 100.0);
+                    found++;
+                } catch (IOException e) {
+                    Log.w(TAG, "more like: a search failed: " + e.getMessage());
+                }
+            }
+            long tFinds = android.os.SystemClock.uptimeMillis() - t0;
             int looked = 0;
             for (java.util.concurrent.Future<WebRelated> f : looks) {
                 try {
@@ -659,10 +753,15 @@ final class YouTubeSource extends Source {
                     Log.w(TAG, "more like: a channel picture failed: " + e.getMessage());
                 }
             }
+            long tPage0 = android.os.SystemClock.uptimeMillis();
             Item.Page page = mix.page(true);
+            long tPage = android.os.SystemClock.uptimeMillis() - tPage0;
             Log.i(TAG, "more like " + it.id + ": tv " + (tv == null ? "-" : tv.size()) + ", web "
-                    + (web == null ? "-" : web.items.size()) + " in " + (t1 - t0) + " ms; " + got + "/" + seeds.size()
-                    + " second lists; " + looked + "/" + looks.size() + " pictures looked up; " + mix.summary + " in " + (android.os.SystemClock.uptimeMillis() - t0) + " ms");
+                    + (web == null ? "-" : web.items.size()) + " in " + (t1 - t0) + " ms, first rows at " + tFirst + " ms; " + got + "/" + seeds.size()
+                    + " second lists by " + tHops + " ms; " + found + "/" + queries.size() + " searches by " + tFinds + " ms; " + looked + "/" + looks.size()
+                    + " pictures looked up; " + mix.summary + " (ranked in " + tPage + " ms) in " + (android.os.SystemClock.uptimeMillis() - t0) + " ms");
+            if (mix.descriptor != null) Log.i(TAG, "more like " + it.id + ": descriptor in " + tMeta + " ms: "
+                    + mix.descriptor.summary(12) + "; searches " + queries + "; top " + mix.top);
             return page;
         } finally {
             pool.shutdownNow();
@@ -705,6 +804,15 @@ final class YouTubeSource extends Source {
         final String srcId, srcName, srcKey;
         final List<HiddenChannels.Entry> hidden;
         final Similar sim;
+        final Descriptor.Weights weights = new Descriptor.Weights();
+        /** What the video says it is about (null: not known, the lists alone rank). */
+        Descriptor descriptor;
+        /** Search snippets by video id (searches only). */
+        final Map<String, String> snippets = new java.util.concurrent.ConcurrentHashMap<>();
+        /** Channels (group keys) in the related lists, as opposed to found only by a search. */
+        final Set<String> related = java.util.Collections.synchronizedSet(new HashSet<String>());
+        /** The first new channels of the last page, for the log. */
+        String top = "";
         /** Films and shows (see movieOf), kept apart from the channels: by title page, best first. */
         final Map<String, double[]> movieScore = new HashMap<>();
         final Map<String, Item> movies = new java.util.LinkedHashMap<>();
@@ -721,6 +829,17 @@ final class YouTubeSource extends Source {
             this.srcName = srcName;
             this.srcKey = srcName.toLowerCase(java.util.Locale.ROOT).trim();
             this.hidden = hidden;
+            weights.tag = Config.d("youtube.similar.descriptor.tag", weights.tag);
+            weights.hashtag = Config.d("youtube.similar.descriptor.hashtag", weights.hashtag);
+            weights.topic = Config.d("youtube.similar.descriptor.topic", weights.topic);
+            weights.title = Config.d("youtube.similar.descriptor.title", weights.title);
+            weights.chapter = Config.d("youtube.similar.descriptor.chapter", weights.chapter);
+            weights.description = Config.d("youtube.similar.descriptor.description", weights.description);
+            weights.category = Config.d("youtube.similar.descriptor.category", weights.category);
+            weights.phrase = Config.d("youtube.similar.descriptor.phrase", weights.phrase);
+            weights.idfFloor = Config.d("youtube.similar.descriptor.idfFloor", weights.idfFloor);
+            weights.searchFit = Config.d("youtube.similar.descriptor.searchFit", weights.searchFit);
+            weights.terms = Config.i("youtube.similar.descriptor.terms", weights.terms);
             this.sim = new Similar(new Similar.Key() {
                 @Override
                 public String of(Item x) {
@@ -754,6 +873,34 @@ final class YouTubeSource extends Source {
                 sc[0] += w * (pos < 8 ? 1.5 : 1.0);
             }
             sim.add(videos, w);
+            for (Item x : videos) {
+                String k = sim.keyOf(x);
+                if (k != null) related.add(k);
+            }
+        }
+
+        /** A search's videos: ranked like a related list's, but their channels are found only by searching. */
+        void addFound(List<Item> list, double w) {
+            sim.add(list, w);
+            for (Item x : list) if (x.channel != null) avatar(x.channel.id, x.channel.image);
+        }
+
+        void describe(Descriptor d) {
+            if (!d.isEmpty()) descriptor = d;
+        }
+
+        /** The descriptor's searches, judged against the candidates found so far (none without a descriptor). */
+        List<String> queries(int n) {
+            if (descriptor == null || n <= 0) return new ArrayList<>();
+            return descriptor.queries(n, descriptor.scorer(sim.ranked(), snippets, weights));
+        }
+
+        /** The channels by list score, blended with their fit to the descriptor when there is one. */
+        List<Similar.Group> ranked() {
+            List<Similar.Group> all = sim.ranked();
+            if (descriptor == null) return all;
+            return sim.ranked(descriptor.fit(all, snippets, related, weights),
+                    Config.d("youtube.similar.descriptor.fitWeight", 2), Config.d("youtube.similar.descriptor.miss", 0.6));
         }
 
         void avatar(String cid, String url) {
@@ -816,7 +963,8 @@ final class YouTubeSource extends Source {
             int newChannels = 0;
             needAvatar.clear();
             int maxLead = Config.i("youtube.similar.channels", 30), maxOwn = Config.i("youtube.similar.ownVideos", 6);
-            for (Similar.Group g : sim.ranked()) {
+            StringBuilder topLog = new StringBuilder();
+            for (Similar.Group g : ranked()) {
                 String cid = idOf(g);
                 if (isSource(cid, g.key)) {
                     for (Item x : g.items) if (own.size() < maxOwn) own.add(x);
@@ -828,6 +976,8 @@ final class YouTubeSource extends Source {
                     continue;
                 }
                 newChannels++;
+                if (newChannels <= 10) topLog.append(newChannels > 1 ? ", " : "").append(g.key)
+                        .append(String.format(java.util.Locale.ROOT, " %.2f/%.2f", g.score, g.match));
                 lead.add(g.items.get(0));
                 if (g.items.size() > 1) rest.add(g.items.subList(1, g.items.size()));
                 if (!cid.isEmpty() && chans.size() < Config.i("youtube.similar.channelTiles", 20)) {
@@ -865,6 +1015,7 @@ final class YouTubeSource extends Source {
                 p.grid = p.shelves.size() - 1;
             }
             if (p.isEmpty()) p.empty = name() + " lists nothing similar for this video.";
+            top = topLog.toString();
             summary = newChannels + " new channels, " + chans.size() + " channel tiles, " + own.size() + " from the source, "
                     + more.size() + " more, " + films.size() + " movies";
             return p;
@@ -874,6 +1025,8 @@ final class YouTubeSource extends Source {
     /** The web watch page's related column for a video and the video's owner. */
     private static final class WebRelated {
         final List<Item> items = new ArrayList<>();
+        /** The games the description links (its "Games" cards) and the music it credits (song, artist). */
+        final List<String> games = new ArrayList<>(), music = new ArrayList<>();
         String ownerId = "", ownerName = "", ownerAvatar = "";
     }
 
@@ -904,6 +1057,14 @@ final class YouTubeSource extends Source {
             "animatedThumbnailOverlayViewModel", "lottieData", "attributedDescription", "description",
             "videoPrimaryInfoRenderer", "metadataRowContainer", "subscribeButton", "sponsorButton", "subscriptionButton"));
     private static final Set<String> RELATED_CAPTURE = new HashSet<>(Arrays.asList("lockupViewModel", "videoOwnerRenderer"));
+    /** The source video's read also keeps the description's game and music cards (in its engagement panel). */
+    private static final Set<String> DESCRIBED_SKIP = new HashSet<>(RELATED_SKIP);
+    private static final Set<String> DESCRIBED_CAPTURE = new HashSet<>(Arrays.asList("lockupViewModel", "videoOwnerRenderer",
+            "videoAttributesSectionViewModel", "horizontalCardListRenderer"));
+
+    static {
+        DESCRIBED_SKIP.remove("engagementPanels");
+    }
 
     /** The web watch data ("next", signed out, as {@link #chapters}): related videos with their channels, and the owner. */
     private WebRelated webRelated(String videoId) throws IOException {
@@ -911,6 +1072,11 @@ final class YouTubeSource extends Source {
     }
 
     private WebRelated webRelated(String videoId, final boolean ownerOnly) throws IOException {
+        return webRelated(videoId, ownerOnly, false);
+    }
+
+    /** As {@link #webRelated(String)}; {@code described}: with the description's game and music cards. */
+    private WebRelated webRelated(String videoId, final boolean ownerOnly, final boolean described) throws IOException {
         final WebRelated out = new WebRelated();
         try {
             JSONObject client = new JSONObject().put("clientName", "WEB").put("clientVersion", WEB_VERSION).put("hl", "en").put("gl", "US");
@@ -921,9 +1087,13 @@ final class YouTubeSource extends Source {
             try (Http.Response r = Http.open(API + "next?prettyPrint=false", h, nb.toString().getBytes(StandardCharsets.UTF_8),
                     "application/json", true)) {
                 JsonReader jr = new JsonReader(new InputStreamReader(r.body, StandardCharsets.UTF_8));
-                JsonScan.scan(jr, RELATED_CAPTURE, NONE, RELATED_SKIP, new JsonScan.Sink() {
+                JsonScan.scan(jr, described ? DESCRIBED_CAPTURE : RELATED_CAPTURE, NONE, described ? DESCRIBED_SKIP : RELATED_SKIP, new JsonScan.Sink() {
                     @Override
                     public void onValue(String key, String name, JSONObject v) {
+                        if (key.equals("videoAttributesSectionViewModel") || key.equals("horizontalCardListRenderer")) {
+                            cards(v, key.equals("videoAttributesSectionViewModel") ? out.games : out.music, key.equals("horizontalCardListRenderer"));
+                            return;
+                        }
                         if (key.equals("videoOwnerRenderer")) {
                             JSONObject be = JsonScan.path(v, "navigationEndpoint", "browseEndpoint");
                             if (be != null && out.ownerId.isEmpty()) {
@@ -947,6 +1117,144 @@ final class YouTubeSource extends Source {
             // the owner is all that was asked for: the rest of the answer is never read
         } catch (JSONException e) {
             throw new IOException("YouTube sent an unreadable video answer");
+        }
+        return out;
+    }
+
+    /** The titles (and with {@code subtitles}, the second lines: a song's artist) of a description's cards. */
+    private static void cards(Object o, List<String> out, boolean subtitles) {
+        if (o instanceof JSONArray) {
+            JSONArray a = (JSONArray) o;
+            for (int i = 0; i < a.length(); i++) cards(a.opt(i), out, subtitles);
+            return;
+        }
+        if (!(o instanceof JSONObject)) return;
+        JSONObject j = (JSONObject) o;
+        JSONObject card = j.optJSONObject("videoAttributeViewModel");
+        if (card != null) {
+            String t = attrText(card.opt("title"));
+            if (!t.isEmpty() && out.size() < 6) out.add(t);
+            String st = subtitles ? attrText(card.opt("subtitle")) : "";
+            if (!st.isEmpty() && out.size() < 6) out.add(st);
+            return;
+        }
+        java.util.Iterator<String> ks = j.keys();
+        while (ks.hasNext()) cards(j.opt(ks.next()), out, subtitles);
+    }
+
+    private static String attrText(Object o) {
+        if (o instanceof String) return ((String) o).trim();
+        return o instanceof JSONObject ? JsonScan.text((JSONObject) o).trim() : "";
+    }
+
+    /** What the web player answer keeps for the descriptor: its video details and category, never its streams. */
+    private static final Set<String> META_CAPTURE = new HashSet<>(Arrays.asList("videoDetails", "playerMicroformatRenderer"));
+    private static final Set<String> META_SKIP = new HashSet<>(Arrays.asList("streamingData", "playerConfig", "storyboards",
+            "playbackTracking", "captions", "annotations", "attestation", "adPlacements", "playerAds", "endscreen",
+            "thumbnail", "thumbnails", "responseContext", "frameworkUpdates", "trackingParams", "embed", "availableCountries"));
+
+    /**
+     * A video's own metadata for {@link Descriptor}: title, tags, description, category and channel, from the web
+     * player answer (signed out; it carries them even when it will not play the video there).
+     */
+    private Descriptor.Source webMeta(String videoId) throws IOException {
+        final Descriptor.Source out = new Descriptor.Source();
+        try {
+            JSONObject client = new JSONObject().put("clientName", "WEB").put("clientVersion", WEB_VERSION).put("hl", "en").put("gl", "US");
+            JSONObject body = new JSONObject().put("videoId", videoId).put("contentCheckOk", true).put("racyCheckOk", true)
+                    .put("context", new JSONObject().put("client", client));
+            Map<String, String> h = new HashMap<>();
+            h.put("User-Agent", Http.DESKTOP_UA);
+            h.put("Origin", "https://www.youtube.com");
+            try (Http.Response r = Http.open(API + "player?prettyPrint=false", h, body.toString().getBytes(StandardCharsets.UTF_8),
+                    "application/json", true)) {
+                JsonReader jr = new JsonReader(new InputStreamReader(r.body, StandardCharsets.UTF_8));
+                JsonScan.scan(jr, META_CAPTURE, NONE, META_SKIP, new JsonScan.Sink() {
+                    @Override
+                    public void onValue(String key, String name, JSONObject v) {
+                        if (key.equals("playerMicroformatRenderer")) {
+                            out.category = v.optString("category", "");
+                            return;
+                        }
+                        out.title = v.optString("title", "");
+                        out.owner = v.optString("author", "");
+                        out.description = v.optString("shortDescription", "");
+                        JSONArray kw = v.optJSONArray("keywords");
+                        if (kw != null) for (int i = 0; i < kw.length() && i < 60; i++) out.keywords.add(kw.optString(i));
+                    }
+                });
+            }
+        } catch (JSONException e) {
+            throw new IOException("YouTube sent an unreadable player answer");
+        }
+        return out;
+    }
+
+    private static final Set<String> SEARCH_CAPTURE = new HashSet<>(Arrays.asList("videoRenderer"));
+    private static final Set<String> SEARCH_SKIP = new HashSet<>(Arrays.asList("responseContext", "frameworkUpdates",
+            "trackingParams", "clickTrackingParams", "loggingDirectives", "commandMetadata", "accessibility",
+            "accessibilityData", "menu", "watchEndpointSupportedOnesieConfig", "thumbnailOverlays", "richThumbnail",
+            "inlinePlaybackEndpoint", "adSlotRenderer", "reelShelfRenderer",
+            "shelfRenderer", "searchPyvRenderer", "estimatedResults", "refinements", "topbar"));
+
+    /**
+     * A web search for videos (signed out, as the web page searches): each video with its channel, and its
+     * description snippet in {@code snippets}.
+     */
+    private List<Item> webSearch(String query, Map<String, String> snippets) throws IOException {
+        final List<Item> out = new ArrayList<>();
+        final Map<String, String> sn = snippets;
+        try {
+            JSONObject client = new JSONObject().put("clientName", "WEB").put("clientVersion", WEB_VERSION).put("hl", "en").put("gl", "US");
+            // params: videos only (the search page's "Videos" filter)
+            JSONObject body = new JSONObject().put("query", query).put("params", "EgIQAQ%3D%3D")
+                    .put("context", new JSONObject().put("client", client));
+            Map<String, String> h = new HashMap<>();
+            h.put("User-Agent", Http.DESKTOP_UA);
+            h.put("Origin", "https://www.youtube.com");
+            try (Http.Response r = Http.open(API + "search?prettyPrint=false", h, body.toString().getBytes(StandardCharsets.UTF_8),
+                    "application/json", true)) {
+                JsonReader jr = new JsonReader(new InputStreamReader(r.body, StandardCharsets.UTF_8));
+                JsonScan.scan(jr, SEARCH_CAPTURE, NONE, SEARCH_SKIP, new JsonScan.Sink() {
+                    @Override
+                    public void onValue(String key, String name, JSONObject v) {
+                        String id = v.optString("videoId", "");
+                        if (!id.matches("[A-Za-z0-9_-]{11}")) return;
+                        JSONObject owner = v.optJSONObject("ownerText");
+                        JSONArray runs = owner == null ? null : owner.optJSONArray("runs");
+                        JSONObject run = runs == null ? null : runs.optJSONObject(0);
+                        JSONObject be = run == null ? null : JsonScan.path(run, "navigationEndpoint", "browseEndpoint");
+                        String cid = be == null ? "" : be.optString("browseId", "");
+                        String cname = run == null ? "" : run.optString("text", "");
+                        if (!cid.startsWith("UC") || cname.isEmpty()) return;
+                        String views = JsonScan.text(v.optJSONObject("shortViewCountText"));
+                        String age = JsonScan.text(v.optJSONObject("publishedTimeText"));
+                        boolean live = age.isEmpty() && views.contains("watching");
+                        StringBuilder sub = new StringBuilder(cname);
+                        if (!views.isEmpty()) sub.append(" · ").append(views);
+                        if (!age.isEmpty()) sub.append(" · ").append(age);
+                        String len = JsonScan.text(v.optJSONObject("lengthText"));
+                        Item x = new Item(live ? Item.LIVE : Item.VIDEO, id, JsonScan.text(v.optJSONObject("title")), sub.toString(),
+                                "https://i.ytimg.com/vi/" + id + "/mqdefault.jpg", live ? "LIVE" : len, "");
+                        // the channel's picture comes with each result, so a channel found only here needs no lookup
+                        JSONObject cth = JsonScan.path(v, "channelThumbnailSupportedRenderers", "channelThumbnailWithLinkRenderer", "thumbnail");
+                        JSONArray cts = cth == null ? null : cth.optJSONArray("thumbnails");
+                        JSONObject ct = cts == null || cts.length() == 0 ? null : cts.optJSONObject(cts.length() - 1);
+                        String cimg = ct == null ? "" : avatarUrl(ct.optString("url", ""));
+                        x.channel = new Item(Item.CHANNEL, cid, cname, "Channel", cimg, "", "");
+                        JSONArray snips = v.optJSONArray("detailedMetadataSnippets");
+                        StringBuilder t = new StringBuilder();
+                        if (snips != null) for (int i = 0; i < snips.length(); i++) {
+                            JSONObject o = snips.optJSONObject(i);
+                            if (o != null) t.append(JsonScan.text(o.optJSONObject("snippetText"))).append(' ');
+                        }
+                        if (t.length() > 0 && sn != null) sn.put(id, t.toString().trim());
+                        out.add(x);
+                    }
+                });
+            }
+        } catch (JSONException e) {
+            throw new IOException("YouTube sent an unreadable search answer");
         }
         return out;
     }

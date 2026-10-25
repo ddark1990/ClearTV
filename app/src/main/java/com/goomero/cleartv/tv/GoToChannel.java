@@ -7,14 +7,17 @@ import android.widget.Toast;
 import java.io.IOException;
 
 /**
- * "Go to channel" in every hold-OK menu (home cards in every theme, service rows, all-services search, the Pluto
- * guide): opens the channel, creator, series or show page of a tile in its own service.
+ * "Go to channel" in every hold-OK menu (home cards in every theme, service rows, all-services search, More like
+ * this): opens the channel, creator, series or show page of a tile in its own service. Whether the row shows comes
+ * only from the service's capability ({@link Source#hasChannel}, {@link Source#channelLabel}), the same rule on
+ * every screen:
  *
  * <ul>
- *   <li>YouTube: the uploader's channel page (from the tile, or looked up from the video).</li>
- *   <li>Pluto TV: the live channel itself, full screen.</li>
+ *   <li>YouTube: the uploader's channel page (from the tile, or looked up from the video; a collaboration opens
+ *       its first creator).</li>
  *   <li>Tubi and Prime Video have no channels or creators: "Go to show" opens an episode's series or show page.
  *       Movies, live channels and Prime stations have no such page, so the action is hidden there.</li>
+ *   <li>Pluto TV has no creator or show pages (a channel card already opens the channel), so nothing shows.</li>
  * </ul>
  * The menu never waits for the network: {@link #label} answers from the tile alone; a lookup, when needed, runs
  * after the pick on a background thread.
@@ -27,7 +30,6 @@ public final class GoToChannel {
     /** The menu row for this tile, or null when its service has no channel, series or show page for it. */
     public static String label(Activity a, String service, Item it) {
         if (service == null || it == null) return null;
-        if (service.equals("pluto")) return it.kind == Item.CHANNEL || it.kind == Item.LIVE ? "Go to channel" : null;
         Source s = source(a, service);
         if (s == null || !s.hasChannel(it)) return null;
         return s.channelLabel();
@@ -35,11 +37,6 @@ public final class GoToChannel {
 
     /** Opens the channel page; {@code here} (may be null) gets it when it is the same service's screen. */
     public static void open(final Activity a, final String service, final Item it, final Opener here) {
-        if (service.equals("pluto")) {
-            // the live channel, full screen (PlutoActivity opens a pinned channel in full screen)
-            ServiceActivity.openInService(a, "pluto", it);
-            return;
-        }
         final Source s = source(a, service);
         if (s == null) return;
         final Item known = it.channel;

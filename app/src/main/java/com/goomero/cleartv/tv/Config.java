@@ -82,6 +82,12 @@ public final class Config {
         return v instanceof Number ? ((Number) v).intValue() : def;
     }
 
+    /** A number at a dotted path, or {@code def}. */
+    public static double d(String path, double def) {
+        Object v = at(path);
+        return v instanceof Number ? ((Number) v).doubleValue() : def;
+    }
+
     /** A string list at a dotted path as a set, or {@code def}. */
     public static Set<String> set(String path, String... def) {
         Object v = at(path);

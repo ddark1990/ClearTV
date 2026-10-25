@@ -166,7 +166,7 @@ public final class HoverPreview {
                     @Override public void onBlockedCountChanged(int count) {}
                     @Override public void onMediaPlayingChanged(boolean playing) {
                         if (playing && g == gen && web != null) {
-                            web.animate().alpha(1f).setDuration(250).start();
+                            showWeb();
                             if (caption != null) caption.animate().alpha(0f).setStartDelay(3000).setDuration(400).start();
                         }
                     }
@@ -210,15 +210,32 @@ public final class HoverPreview {
         main.postDelayed(new Runnable() {
             @Override
             public void run() {
-                if (g == gen && web != null && web.getAlpha() == 0f) web.animate().alpha(1f).setDuration(250).start();
+                if (g == gen && web != null && web.getAlpha() == 0f) showWeb();
             }
         }, 4000);
         Log.i(TAG, "web preview " + it.id);
     }
 
+    /** The embed covers the preview area: the artwork under it stops moving and drawing (it cost a redraw every frame). */
+    private void showWeb() {
+        web.animate().alpha(1f).setDuration(250).withEndAction(new Runnable() {
+            @Override
+            public void run() {
+                if (art != null && web != null && web.getAlpha() == 1f) {
+                    art.animate().cancel();
+                    art.setVisibility(View.INVISIBLE);
+                }
+            }
+        }).start();
+    }
+
     /** Ken Burns: a slow zoom and drift across the artwork for the length of the preview. */
     private void showBitmap(android.graphics.Bitmap b) {
         art.setImageBitmap(b);
+        if (web != null && web.getAlpha() == 1f) {
+            art.setVisibility(View.INVISIBLE); // the artwork arrived after the embed already covers the preview area
+            return;
+        }
         art.setScaleX(1.04f);
         art.setScaleY(1.04f);
         art.setTranslationX(Ui.dp(c, 10));
@@ -236,8 +253,16 @@ public final class HoverPreview {
                 .setBufferDurationsMs(4_000, 8_000, 1_000, 2_000).setTargetBufferBytes(3 * 1024 * 1024).build();
         // HLS (Tubi, Pluto, YouTube live) or a progressive MP4 (YouTube's muxed 360p)
         androidx.media3.exoplayer.source.MediaSource.Factory msf = !p.hls.contains("/videoplayback?")
-                ? new HlsMediaSource.Factory(http) : new androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(http);
-        player = new ExoPlayer.Builder(c).setMediaSourceFactory(msf).setLoadControl(load).build();
+                ? new HlsMediaSource.Factory(http)
+                // MP4 is the only progressive format a preview gets: just that parser, not every container Media3 reads
+                : new androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(http, new androidx.media3.extractor.ExtractorsFactory() {
+                    @Override
+                    public androidx.media3.extractor.Extractor[] createExtractors() {
+                        return new androidx.media3.extractor.Extractor[] {new androidx.media3.extractor.mp4.Mp4Extractor()};
+                    }
+                });
+        // the factory goes in the constructor, so the default one (and its parsers) is never built
+        player = new ExoPlayer.Builder(c, msf).setLoadControl(load).build();
         player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
                 .setMaxVideoSize(854, 480).setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true).build());
         player.setVolume(0f);
@@ -308,6 +333,12 @@ public final class HoverPreview {
             web = null;
         }
         box.setVisibility(View.GONE);
+    }
+
+    /** The screen is going away: stop, and end the artwork loader's threads. */
+    public void release() {
+        stop();
+        artImages.shutdown();
     }
 
     public boolean isActive() {
