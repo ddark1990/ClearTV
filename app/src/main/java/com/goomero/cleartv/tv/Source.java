@@ -49,7 +49,13 @@ public abstract class Source {
 
     /** How to play an item: an HLS stream in ClearTV's player, or a web page when the stream is DRM-protected. */
     public static final class Playback {
+        /** The stream for ClearTV's own player: an HLS playlist, or a DASH manifest when {@link #dash} is set. */
         public String hls;
+        /** {@link #hls} is a DASH manifest (MPD). */
+        public boolean dash;
+        /** Widevine license URL for a protected stream, and the headers its license requests need (in memory only). */
+        public String drmLicenseUrl;
+        public Map<String, String> drmHeaders;
         public Map<String, String> headers;
         public String userAgent;
         public boolean live;
@@ -57,6 +63,7 @@ public abstract class Source {
         public String webUrl;
         public boolean webTvUa;
         public String title = "", subtitle = "";
+        /** Where the account stopped this title on the service (ms), used when ClearTV has no saved position. */
         public long resumeMs;
         /** Skip-intro and next-episode markers when the service publishes them (ms into the video), else 0. */
         public long introStartMs, introEndMs, creditsMs;
@@ -80,6 +87,8 @@ public abstract class Source {
                 return new TubiSource(c);
             case "prime":
                 return new PrimeSource(c);
+            case "paramount":
+                return new ParamountSource(c);
             case "all":
                 return new AllSource(c);
             default:

@@ -248,6 +248,27 @@
               },
               {
                 "type": "row",
+                "data": "service:paramount",
+                "title": "Paramount+",
+                "margin": [
+                  0,
+                  14,
+                  0,
+                  0
+                ],
+                "gap": 18,
+                "card": {
+                  "width": 220,
+                  "radius": 4,
+                  "label": "focused"
+                },
+                "effect": {
+                  "scale": 1.08,
+                  "ring": false
+                }
+              },
+              {
+                "type": "row",
                 "data": "watchlist",
                 "title": "My list",
                 "margin": [

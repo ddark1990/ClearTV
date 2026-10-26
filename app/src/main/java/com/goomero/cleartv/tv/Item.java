@@ -60,6 +60,8 @@ public final class Item {
         public final List<Item> items;
         /** Token for the row's next tiles when the service pages the row (Source.moreRow), else null. */
         public String more;
+        /** A row of unrelated titles (a watch history or a watchlist): nothing in it plays next after a tile. */
+        public boolean mixed;
 
         public Shelf(String title, List<Item> items) {
             this.title = title == null ? "" : title;

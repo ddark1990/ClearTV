@@ -31,9 +31,9 @@ public final class Layout {
     public static final List<String> ACTIONS = list("search", "themes", "settings");
     public static final List<String> NAV_ITEMS = list("services", "search", "themes", "settings");
     public static final List<String> ITEM_STYLES = list("tile", "icon", "text", "logo-text", "pill");
-    public static final List<String> SERVICE_IDS = list("youtube", "prime", "tubi", "pluto");
+    public static final List<String> SERVICE_IDS = list("youtube", "prime", "tubi", "pluto", "paramount");
     public static final List<String> DATA = list("services", "continue", "watchlist", "favorites", "focused-service",
-            "search", "service:youtube", "service:prime", "service:tubi", "service:pluto");
+            "search", "service:youtube", "service:prime", "service:tubi", "service:pluto", "service:paramount");
     public static final List<String> ASPECTS = list("16:9", "2:1", "21:9", "4:3");
     public static final List<String> LABELS = list("none", "below", "focused", "overlay");
     public static final List<String> BINDS = list("clock", "version", "status", "app", "focused-title", "focused-service");

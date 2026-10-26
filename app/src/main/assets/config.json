@@ -1,7 +1,7 @@
 {
  "schema": 1,
- "version": 2,
- "published": "2026-10-24T04:30:00Z",
+ "version": 4,
+ "published": "2026-10-25T04:00:00Z",
  "notes": "ClearTV service adapter config, built into the app. Changes ship as a new app version.",
  "youtube": {
   "api": "https://www.youtube.com/youtubei/v1/",
@@ -240,5 +240,44 @@
   "appName": "web",
   "appVersion": "9.6.0",
   "deviceVersion": "120.0.0"
+ },
+ "paramount": {
+  "api": "https://www.paramountplus.com/apps-api",
+  "at": "ABB+XYTJa4Y14QBS5+7jCYvFe04w88I5dxzStu4zlQ4rqTTW/iMZ33tuiqPzzdgMJjQ=",
+  "locale": "en-us",
+  "region": "US",
+  "platform": "androidtv",
+  "ua": "Paramount+/15.5.0 (com.cbs.ott; build:520000178; Android SDK 30; androidtv; SHIELD Android TV) okhttp/5.1.0",
+  "images": "https://wwwimage-us.pplusstatic.com/thumbnails/photos/w400/",
+  "thumbs": "https://thumbnails.cbsig.net/_x/w400/",
+  "preview": "https://splice.paramountplus.com/api/sas/{type}/{id}/US/en-us/previewhls",
+  "activateUrl": "paramountplus.com/activate/androidtv",
+  "activateQr": "https://www.paramountplus.com/activate/androidtv/?code={code}",
+  "webDomains": [
+   "paramountplus.com",
+   "pplusstatic.com",
+   "cbsi.com",
+   "cbsig.net",
+   "paramount.tech",
+   "theplatform.com",
+   "cbsaavideo.com",
+   "irdeto.com",
+   "dai.google.com",
+   "imasdk.googleapis.com",
+   "cbsivideo.com"
+  ],
+  "similar": {
+   "seeds": 3,
+   "waitMs": 5000
+  },
+  "probe": {
+   "search": "star trek"
+  },
+  "smil": "https://link.theplatform.com/s/dJ5BDC/media/guid/2198311517/{id}?format=SMIL&formats=M3U,MPEG4&assetTypes=HLS_TA&manifest=m3u&mbr=true",
+  "dai": "https://dai.google.com/linear/v1/hls/event/{key}/stream",
+  "drmSession": "/v3.1/{platform}/irdeto-control/session-token.json",
+  "streams": "/v3.1/{platform}/video/streams.json",
+  "dashSmil": "https://link.theplatform.com/s/dJ5BDC/media/guid/2198311517/{id}?format=SMIL&formats=MPEG-DASH&assetTypes={types}",
+  "dashAssetTypes": ["DASH_CENC", "DASH_CENC_PRECON"]
  }
 }

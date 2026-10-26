@@ -158,6 +158,7 @@ public final class SettingsActivity extends Activity {
                 {"youtube", "YouTube", "ad requests blocked, ad placements removed from the player"},
                 {"prime", "Prime Video", "ad and tracker requests blocked; stitched ad breaks run muted at 16x"},
                 {"tubi", "Tubi", "ClearTV's player never requests Tubi's ad breaks"},
+                {"paramount", "Paramount+", "ad and tracker requests blocked; stitched ad breaks run muted at 16x"},
                 {"pluto", "Pluto TV", "live ads are part of the broadcast stream and stay"}}) {
             add(new Row() {
                 public String label() {
@@ -188,7 +189,7 @@ public final class SettingsActivity extends Activity {
             public String value() { return null; }
             public void onClick() { startActivity(new android.content.Intent(SettingsActivity.this, com.goomero.cleartv.tv.SignInAllActivity.class)); }
         });
-        for (final String[] svc : new String[][]{{"youtube", "YouTube"}, {"tubi", "Tubi"}, {"prime", "Prime Video"}, {"pluto", "Pluto TV"}}) {
+        for (final String[] svc : new String[][]{{"youtube", "YouTube"}, {"tubi", "Tubi"}, {"prime", "Prime Video"}, {"paramount", "Paramount+"}, {"pluto", "Pluto TV"}}) {
             LinearLayout accountRow = add(new Row() {
                 public String label() {
                     return com.goomero.cleartv.tv.Accounts.signedIn(SettingsActivity.this, svc[0])
@@ -238,7 +239,7 @@ public final class SettingsActivity extends Activity {
 
         section("Services status");
         final long checked = com.goomero.cleartv.tv.HealthCheck.lastRun(this);
-        for (final String[] svc : new String[][]{{"youtube", "YouTube"}, {"tubi", "Tubi"}, {"prime", "Prime Video"}, {"pluto", "Pluto TV"}}) {
+        for (final String[] svc : new String[][]{{"youtube", "YouTube"}, {"tubi", "Tubi"}, {"prime", "Prime Video"}, {"paramount", "Paramount+"}, {"pluto", "Pluto TV"}}) {
             final com.goomero.cleartv.tv.HealthCheck.Status st = com.goomero.cleartv.tv.HealthCheck.status(this, svc[0]);
             add(new Row() {
                 public String label() {
@@ -761,6 +762,7 @@ public final class SettingsActivity extends Activity {
             case "youtube": return "YouTube";
             case "tubi": return "Tubi";
             case "prime": return "Prime Video";
+            case "paramount": return "Paramount+";
             default: return id;
         }
     }

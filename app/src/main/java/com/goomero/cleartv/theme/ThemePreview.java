@@ -18,7 +18,7 @@ import com.goomero.cleartv.Ui;
  */
 public final class ThemePreview extends View {
     private static final String[] SERVICES = {"YOUTUBE", "PRIME VIDEO", "TUBI", "PLUTO TV"};
-    private static final int[] BRANDS = {0xFFFF3B30, 0xFF1A98FF, 0xFFFFDF00, 0xFFFFF200};
+    private static final int[] BRANDS = {0xFFFF3B30, 0xFF1A98FF, 0xFFFFDF00, 0xFFFFF200, 0xFF0064FF};
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), stroke = new Paint(Paint.ANTI_ALIAS_FLAG),
             txt = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF r = new RectF();
@@ -284,7 +284,7 @@ public final class ThemePreview extends View {
         txt.setTextSize(20 * fs * u);
         txt.setColor(t.text);
         cv.drawText("CLEARTV", 48 * u, 58 * u, txt);
-        String[] items = {"Search all", "YouTube", "Prime Video", "Tubi", "Pluto TV"};
+        String[] items = {"Search all", "YouTube", "Prime Video", "Tubi", "Pluto TV", "Paramount+"};
         float y = 90 * u;
         for (int i = 0; i < items.length; i++) {
             if (i == 1) {

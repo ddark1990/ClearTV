@@ -18,6 +18,11 @@ SITES = {  # icon key (Services.java iconHost) -> page to read the icon links fr
     'www.youtube.com': 'https://www.youtube.com/',
     'pluto.tv': 'https://pluto.tv/',
     'tubitv.com': 'https://tubitv.com/',
+    'www.paramountplus.com': 'https://www.paramountplus.com/',
+}
+# sites whose own icons are too small for the tile: a square crop of a larger brand image instead
+CROPS = {
+    'www.paramountplus.com': ('https://www.paramountplus.com/assets/pplus/PPlus_Logo_1200x630_BLUE.png', (405, 45, 795, 435)),
 }
 
 
@@ -96,7 +101,14 @@ def main():
     for host, page in SITES.items():
         print(host)
         im = None
-        for size, url in candidates(page):
+        if host in CROPS:
+            url, box = CROPS[host]
+            try:
+                im = load(url).crop(box)
+                print('  %s cropped to %dx%d' % (url, im.size[0], im.size[1]))
+            except Exception as e:
+                print('  failed', url, e)
+        for size, url in ([] if im is not None else candidates(page)):
             try:
                 im = load(url)
                 if min(im.size) >= 64:

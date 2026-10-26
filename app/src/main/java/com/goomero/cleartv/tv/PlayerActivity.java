@@ -39,8 +39,9 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * ClearTV's player for the native service screens: one HLS stream full screen in Media3 at the best quality the
- * stream and TV allow ({@link Quality}), with the shared overlay and remote behaviour of {@link PlayerChrome}
+ * ClearTV's player for the native service screens: one HLS stream (or a Widevine DASH stream) full screen in
+ * Media3 at the best quality the stream and TV allow ({@link Quality}), with the shared overlay and remote
+ * behaviour of {@link PlayerChrome}
  * (options: quality, captions). If the stream fails and the service has a web player for the title, that
  * opens instead (inside ClearTV).
  */
@@ -50,7 +51,8 @@ public final class PlayerActivity extends Activity {
     public static final String EXTRA_HLS = "hls", EXTRA_UA = "ua", EXTRA_HEADERS = "headers", EXTRA_TITLE = "title",
             EXTRA_SUBTITLE = "subtitle", EXTRA_LIVE = "live", EXTRA_ACCENT = "accent", EXTRA_SERVICE = "service",
             EXTRA_WEB = "web", EXTRA_WEB_TV = "webTv", EXTRA_DOMAINS = "domains", EXTRA_SERVICE_ID = "serviceId",
-            EXTRA_PRESSED = "pressed", EXTRA_CAPTIONS = "captions", EXTRA_CAPTIONS_LABEL = "captionsLabel";
+            EXTRA_PRESSED = "pressed", EXTRA_CAPTIONS = "captions", EXTRA_CAPTIONS_LABEL = "captionsLabel",
+            EXTRA_DASH = "dash", EXTRA_DRM_URL = "drmUrl", EXTRA_DRM_HEADERS = "drmHeaders";
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private ExoPlayer player;
@@ -83,6 +85,9 @@ public final class PlayerActivity extends Activity {
     public static Intent intent(Context c, Source s, Source.Playback p) {
         Intent i = new Intent(c, PlayerActivity.class);
         i.putExtra(EXTRA_HLS, p.hls);
+        i.putExtra(EXTRA_DASH, p.dash);
+        if (p.drmLicenseUrl != null) i.putExtra(EXTRA_DRM_URL, p.drmLicenseUrl);
+        if (p.drmHeaders != null) i.putExtra(EXTRA_DRM_HEADERS, new HashMap<>(p.drmHeaders));
         i.putExtra(EXTRA_UA, p.userAgent);
         if (p.headers != null) i.putExtra(EXTRA_HEADERS, new HashMap<>(p.headers));
         i.putExtra(EXTRA_TITLE, p.title);
@@ -309,7 +314,14 @@ public final class PlayerActivity extends Activity {
                 .setPrioritizeTimeOverSizeThresholds(false)
                 .build();
         // short timeouts with instant retries (tv/FastLoad); live streams keep their own start position here
-        player = Quality.build(this, FastLoad.hls(ua != null ? ua : Http.DESKTOP_UA, headers, 0), load, q);
+        @SuppressWarnings("unchecked")
+        Map<String, String> drmHeaders = (Map<String, String>) in.getSerializableExtra(EXTRA_DRM_HEADERS);
+        String agent = ua != null ? ua : Http.DESKTOP_UA;
+        // a DASH manifest (Paramount+ episodes and films, Widevine) or an HLS playlist (everything else)
+        androidx.media3.exoplayer.source.MediaSource.Factory media = in.getBooleanExtra(EXTRA_DASH, false)
+                ? FastLoad.dash(agent, headers, in.getStringExtra(EXTRA_DRM_URL), drmHeaders, serviceId)
+                : FastLoad.hls(agent, headers, 0);
+        player = Quality.build(this, media, load, q);
         quiet = new FastLoad.QuietBuffering(main, serviceId, new Runnable() {
             @Override
             public void run() {

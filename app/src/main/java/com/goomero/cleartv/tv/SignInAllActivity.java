@@ -23,7 +23,7 @@ import java.util.Locale;
  * with OK; RIGHT skips any step, BACK leaves.
  */
 public final class SignInAllActivity extends Activity {
-    private static final String[][] STEPS = {{"youtube", "YouTube"}, {"tubi", "Tubi"}, {"prime", "Prime Video"}, {"pluto", "Pluto TV"}};
+    private static final String[][] STEPS = {{"youtube", "YouTube"}, {"tubi", "Tubi"}, {"prime", "Prime Video"}, {"paramount", "Paramount+"}, {"pluto", "Pluto TV"}};
     private final int[] result = new int[STEPS.length]; // 0 pending, 1 signed in, 2 skipped
     private FrameLayout root;
     private LinearLayout chips, body;

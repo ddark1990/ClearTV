@@ -285,7 +285,7 @@
       }
     },
     "screens": {
-      "description": "Version 2: the layout document. home is required; service sets the chrome of the service screens (YouTube, Prime Video, Tubi), the Pluto TV guide and the players' overlays.",
+      "description": "Version 2: the layout document. home is required; service sets the chrome of the service screens (YouTube, Prime Video, Tubi, Paramount+), the Pluto TV guide and the players' overlays.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -709,7 +709,7 @@
           ]
         },
         "data": {
-          "description": "row and grid: services, continue (Continue watching), watchlist or favorites (the Watchlist), focused-service (the Continue watching and Watchlist of the service focused in a nav or services row: a Top Shelf), search (a Search all card), service:youtube, service:prime, service:tubi, service:pluto (that service's items).",
+          "description": "row and grid: services, continue (Continue watching), watchlist or favorites (the Watchlist), focused-service (the Continue watching and Watchlist of the service focused in a nav or services row: a Top Shelf), search (a Search all card), service:youtube, service:prime, service:tubi, service:pluto, service:paramount (that service's items).",
           "enum": [
             "services",
             "continue",
@@ -720,7 +720,8 @@
             "service:youtube",
             "service:prime",
             "service:tubi",
-            "service:pluto"
+            "service:pluto",
+            "service:paramount"
           ]
         },
         "title": {

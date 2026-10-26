@@ -142,9 +142,9 @@ public final class WebActivity extends Activity {
         docStartScript = androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT);
         if (docStartScript) {
             androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, contentScript, java.util.Collections.singleton("*"));
-            // on-demand ad guard in the players' own frames (YouTube embed, primevideo.com)
+            // on-demand ad guard in the players' own frames (YouTube embed, primevideo.com, paramountplus.com)
             java.util.Set<String> players = new java.util.HashSet<>(java.util.Arrays.asList("https://www.youtube.com",
-                    "https://www.youtube-nocookie.com", "https://www.primevideo.com"));
+                    "https://www.youtube-nocookie.com", "https://www.primevideo.com", "https://www.paramountplus.com"));
             androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, AdGuardJs.script(blocker.bridgeName), players);
         }
         serviceId = in.getStringExtra(EXTRA_SERVICE_ID) == null ? "" : in.getStringExtra(EXTRA_SERVICE_ID);
@@ -159,6 +159,10 @@ public final class WebActivity extends Activity {
             java.util.Set<String> yt = new java.util.HashSet<>(java.util.Arrays.asList("https://www.youtube.com", "https://www.youtube-nocookie.com"));
             androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, ytQualityScript(Quality.maxHeight(this, quality), quality == Quality.AUTO), yt);
             androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, YT_CAPTIONS, yt);
+            if (url(in).contains("paramountplus.com")) {
+                androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, PARAMOUNT_PLAYER,
+                        java.util.Collections.singleton("https://www.paramountplus.com"));
+            }
             if (url(in).contains("primevideo.com")) {
                 androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, primeQualityScript(Quality.maxHeight(this, quality)),
                         java.util.Collections.singleton("https://www.primevideo.com"));
@@ -189,6 +193,7 @@ public final class WebActivity extends Activity {
             web.loadDataWithBaseURL(EMBED_BASE, embedPage(ytId, Quality.maxHeight(this, quality)), "text/html", "UTF-8", null);
         } else {
             blocker.onMainFrameNavigation(url);
+            if ("paramount".equals(serviceId)) ParamountSource.syncWebSession(this);
             web.loadUrl(url);
         }
         web.requestFocus();
@@ -255,6 +260,25 @@ public final class WebActivity extends Activity {
             + "if(!document.documentElement)return;if(!st){st=document.createElement('style');st.textContent=css;}"
             + "var p=document.head||document.documentElement;p.appendChild(st);mo.observe(p,{childList:true});mo.observe(document.documentElement,{childList:true});}"
             + "mo.observe(document,{childList:true});add();document.addEventListener('DOMContentLoaded',add);})();";
+
+    /**
+     * Paramount+'s watch page: once its video is playing full size, only the bare video shows (the page and AVIA
+     * player chrome are hidden; ClearTV's overlay has the controls). Until then nothing is hidden, so a Resume
+     * question or a sign-in page stays visible; a Resume button the player offers before starting is pressed once.
+     */
+    static final String PARAMOUNT_PLAYER = "(function(){if(window.__ctvPp)return;window.__ctvPp=1;"
+            + "var css='html.ctv-bare,html.ctv-bare body{background:#000!important}"
+            + "html.ctv-bare body *{visibility:hidden!important;cursor:none!important}"
+            + "html.ctv-bare video{visibility:visible!important;object-fit:contain!important;background:#000!important}';"
+            + "var st=null,resumed=false;function add(){if(!document.documentElement)return;if(!st){st=document.createElement('style');st.textContent=css;}"
+            + "var p=document.head||document.documentElement;if(st.parentNode!==p)p.appendChild(st);}"
+            + "setInterval(function(){add();var l=document.querySelectorAll('video'),big=false;"
+            + "for(var i=0;i<l.length;i++){var r=l[i].getBoundingClientRect();"
+            + "if(r.width>=innerWidth*0.6&&l[i].readyState>=2&&(!l[i].paused||l[i].currentTime>0))big=true;}"
+            + "document.documentElement.classList.toggle('ctv-bare',big);"
+            + "if(!big&&!resumed){var bs=document.querySelectorAll('button,[role=button]');for(var j=0;j<bs.length;j++){"
+            + "var t=(bs[j].innerText||'').trim();if(/^resume( watching)?$/i.test(t)&&bs[j].getBoundingClientRect().width>0){resumed=true;bs[j].click();break;}}}"
+            + "},500);document.addEventListener('DOMContentLoaded',add);})();";
 
     /**
      * YouTube's player inside the embed frame: lets YouTube pick the first segments itself (its quick start),
@@ -547,7 +571,14 @@ public final class WebActivity extends Activity {
         ui.postDelayed(new Runnable() {
             @Override
             public void run() {
+                if (!firstFrame) logStuck(20);
+            }
+        }, 20_000);
+        ui.postDelayed(new Runnable() {
+            @Override
+            public void run() {
                 if (!firstFrame && cover != null) {
+                    logStuck(45);
                     removeCover();
                     toast(WebActivity.this, "Playback didn't start. The page may need sign-in or a subscription for this title.");
                 }
@@ -569,6 +600,37 @@ public final class WebActivity extends Activity {
         buffering.setVisibility(on ? View.VISIBLE : View.GONE);
     }
 
+    /**
+     * What the page shows while the cover waits for a video that has not started: the path, whether the page sees a
+     * signed-in user (Paramount+), the videos with their state and error, and the page's headings and alerts. Only
+     * headings and alerts are read (no buttons or lists, which can hold profile names).
+     */
+    static final String STUCK_JS = "(function(){try{var v=document.querySelectorAll('video'),vs=[];"
+            + "for(var i=0;i<v.length;i++){var r=v[i].getBoundingClientRect();vs.push(Math.round(r.width)+'x'+Math.round(r.height)"
+            + "+' rs'+v[i].readyState+(v[i].error?' err'+v[i].error.code:'')+(v[i].paused?' paused':' playing')+' t'+Math.round(v[i].currentTime||0));}"
+            + "var R=(window.CBS&&window.CBS.Registry)||{},auth=('user_auth' in R)?String(R.user_auth):'-',h=[];"
+            + "var n=document.querySelectorAll('h1,h2,h3,[role=alert],[role=dialog] h1,[role=dialog] h2,[class*=error-message],[class*=errorMessage]');"
+            + "for(var j=0;j<n.length&&h.length<8;j++){var e=n[j],b=e.getBoundingClientRect(),t=(e.innerText||'').replace(/\\s+/g,' ').trim();"
+            + "if(t&&b.width>0&&b.height>0)h.push(t.slice(0,60));}"
+            + "return 'path='+location.pathname+' auth='+auth+' frames='+document.querySelectorAll('iframe').length"
+            + "+' videos=['+vs.join('; ')+'] text=['+h.join(' | ')+']';}catch(e){return 'diag error '+e;}})()";
+
+    private void logStuck(final int sec) {
+        if (web == null) return;
+        web.evaluateJavascript(STUCK_JS, new android.webkit.ValueCallback<String>() {
+            @Override
+            public void onReceiveValue(String v) {
+                String s = v;
+                try {
+                    Object o = new org.json.JSONTokener(v).nextValue();
+                    if (o instanceof String) s = (String) o;
+                } catch (Exception ignored) {
+                }
+                Log.w(TAG, "no picture " + sec + " s after Play (" + serviceId + "): " + (s == null ? "" : s.length() > 700 ? s.substring(0, 700) : s));
+            }
+        });
+    }
+
     private void removeCover() {
         if (cover == null) return;
         root.removeView(cover);
@@ -584,7 +646,7 @@ public final class WebActivity extends Activity {
         StartTrace.end(dims);
         removeCover();
         // Prime Video resumes on its own (t= and the account's position); the embed starts where ClearTV stopped
-        if (resumeMs > 0 && chrome != null && !"prime".equals(serviceId)) chrome.target().seekTo(resumeMs);
+        if (resumeMs > 0 && chrome != null && !"prime".equals(serviceId) && !"paramount".equals(serviceId)) chrome.target().seekTo(resumeMs);
         if (chrome != null) {
             chrome.show();
             chrome.hidePausedMark();

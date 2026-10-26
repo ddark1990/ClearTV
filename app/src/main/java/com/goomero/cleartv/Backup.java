@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
 public final class Backup {
     public static final String FILE = "cleartv-backup.json";
     private static final String[] WHOLE = {"library", "live_lists", "quality", "cleartv"};
-    private static final String[] SERVICES = {"prime", "youtube", "tubi", "pluto"};
+    private static final String[] SERVICES = {"prime", "youtube", "tubi", "pluto", "paramount"};
     private static final Set<String> SERVICE_KEYS = new java.util.HashSet<>(java.util.Arrays.asList(
             "profile_id", "profile_name", "profile_avatar", "profile_ask", "cc_on"));
     /** Belt and braces: any key that looks like sign-in data is never written, whatever file it is in. */

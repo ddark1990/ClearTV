@@ -1,6 +1,6 @@
 # ClearTV
 
-**One app for Prime Video, YouTube, Pluto TV and Tubi on your Fire TV, with no page ads, no trackers and no app promos.**
+**One app for Prime Video, YouTube, Paramount+, Pluto TV and Tubi on your Fire TV, with no page ads, no trackers and no app promos.**
 
 **[Changelog](CHANGELOG.md) · [Releases](https://github.com/ddark1990/ClearTV/releases) · [Contributing](CONTRIBUTING.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md) · [License (GPL-3.0)](LICENSE)**
 
@@ -12,32 +12,32 @@ ClearTV is an ordinary app. It **does not change, root or modify your TV's opera
 
 ClearTV is **free and open source**. All of the code is here in this repo, so anyone can read exactly what it does, build it themselves, and suggest fixes.
 
-> **What gets blocked, and what doesn't:** ClearTV removes ads from **on-demand** videos (movies and shows you pick). **Live TV channels** (Pluto TV channels, Tubi Live TV and Prime Video live stations) have their ad breaks built into the broadcast itself, the same as cable, so those ads **can't be blocked**. During a live ad break you may see the service's own "we'll be right back" screen instead of the ad.
+> **What gets blocked, and what doesn't:** ClearTV removes ads from **on-demand** videos (movies and shows you pick). **Live TV channels** (Pluto TV channels, Tubi Live TV, Prime Video live stations and Paramount+ live channels) have their ad breaks built into the broadcast itself, the same as cable, so those ads **can't be blocked**. During a live ad break you may see the service's own "we'll be right back" screen instead of the ad.
 
 ---
 
 ## Features
 
-- **All your services in one place:** Prime Video, YouTube, Pluto TV and Tubi, all in the same TV-style screen: the same rows, focus highlight, search, details page and player controls on every service, in each service's colour.
-- **Ad-free on demand:** YouTube and Tubi on-demand videos play without ads (ClearTV's player never requests Tubi's ad breaks). Page ads, trackers, cookie banners and "get our app" promos are blocked everywhere.
-- **Every section of every service:** Prime Video (Home, Free to me, Movies, TV shows, Live TV, Sports, Watchlist and more), YouTube (Home, Shorts, Subscriptions, Library, Movies & TV, Live, Music and more), Tubi (Home, Movies, TV Shows, Live TV, My Stuff) and Pluto TV's live guide. Tubi's Movies and TV Shows load Tubi's own storefronts; YouTube Movies & TV titles open to Play movie / Trailer, or a note when a title is buy or rent only.
+- **All your services in one place:** Prime Video, YouTube, Paramount+, Pluto TV and Tubi, all in the same TV-style screen: the same rows, focus highlight, search, details page and player controls on every service, in each service's colour.
+- **Ad-free on demand:** YouTube and Tubi on-demand videos play without ads (ClearTV's player never requests Tubi's ad breaks). Page ads, trackers, cookie banners and "get our app" promos are blocked everywhere. Paramount+ builds its ad breaks into the video on its own servers (Essential plan), so ClearTV can't remove them; it plays each break muted at 16x instead, and Paramount+'s free trailers and Extras have no ads at all.
+- **Every section of every service:** Prime Video (Home, Free to me, Movies, TV shows, Live TV, Sports, Watchlist and more), YouTube (Home, Shorts, Subscriptions, Library, Movies & TV, Live, Music and more), Tubi (Home, Movies, TV Shows, Live TV, My Stuff), Paramount+ (Home, Movies, Shows, Live TV, My Stuff, with seasons, episodes and a free Extras row on each show) and Pluto TV's live guide. Tubi's Movies and TV Shows load Tubi's own storefronts; YouTube Movies & TV titles open to Play movie / Trailer, or a note when a title is buy or rent only.
 - **Search all:** one search covers every service at once.
 - **Live guides:** Pluto TV's channel guide and Prime Video's live channels, with **Favorites** and **Recently watched**.
-- **Hold OK for options:** on any tile or channel, on every service (YouTube, Prime Video, Tubi, Pluto TV, also while watching a Pluto TV channel), hold OK for about half a second to open a small menu: Play or Watch now, Add to / Remove from Favorites, and Remove from Continue watching where it applies. A short press still opens or plays right away. On live channels, ▶▶ also adds or removes a Favorite in one press. Live channel Favorites head that service's guide; other favorites appear in the Watchlist row on the home screen.
+- **Hold OK for options:** on any tile or channel, on every service (YouTube, Prime Video, Tubi, Paramount+, Pluto TV, also while watching a Pluto TV channel), hold OK for about half a second to open a small menu: Play or Watch now, Add to / Remove from Favorites, and Remove from Continue watching where it applies. A short press still opens or plays right away. On live channels, ▶▶ also adds or removes a Favorite in one press. Live channel Favorites head that service's guide; other favorites appear in the Watchlist row on the home screen.
 - **Continue watching and resume:** pick up where you left off, or start over. The home screen has a Continue watching row for everything, and each service's own screen (YouTube, Prime Video, Tubi) starts with a row of just that service's titles, with a bar showing how far you got.
 - **YouTube chapters and SKIP SPONSOR:** videos with chapters get a segmented progress bar with the current chapter's name. When the creator marks a sponsor or ad read as its own chapter, a **SKIP SPONSOR** button jumps past it, or turn on **Auto-skip sponsor chapters** in Settings to skip those chapters by themselves. It uses the video's own chapters, so sponsor reads that aren't a separate chapter still play.
-- **More like this:** hold OK on a title (or open Options while watching) and pick More like this for similar titles from the service itself: YouTube's related videos, Tubi's related titles and Prime Video's "Customers also watched". Pluto TV is live channels only, so it doesn't have it. On YouTube it reads what the video says about itself (its tags, hashtags, topic or game card, title, chapters and description), runs a quick search for that subject and puts channels about the same thing first, so a small channel about the same game or recipe beats a big, loosely related one. You get a row of new channels, a row of those channels, a Movies like this row when YouTube suggests films, and a short row from the channel you were watching.
+- **More like this:** hold OK on a title (or open Options while watching) and pick More like this for similar titles from the service itself: YouTube's related videos, Tubi's related titles, Prime Video's "Customers also watched" and Paramount+'s related shows. Pluto TV is live channels only, so it doesn't have it. On YouTube it reads what the video says about itself (its tags, hashtags, topic or game card, title, chapters and description), runs a quick search for that subject and puts channels about the same thing first, so a small channel about the same game or recipe beats a big, loosely related one. You get a row of new channels, a row of those channels, a Movies like this row when YouTube suggests films, and a short row from the channel you were watching.
   - **On YouTube it finds new channels:** the first row is one video from each of up to 30 different channels like the one you were watching, then a row of those channels themselves (with their pictures; OK opens the channel), a short row from the channel you were watching, and more from the new channels. It is ranked from YouTube's own related lists, nothing hand-picked.
   - **Movies like this:** films and shows YouTube suggests (its Free with ads and Buy or rent titles) get their own row instead of mixing in with creators' videos. OK opens the title page with Play movie and Trailer.
 - **Don't recommend channel / Hide channel:** hold OK on a YouTube video to keep its channel off your screens. Where YouTube's own menu offers "Don't recommend channel" (Home recommendations, signed in), ClearTV sends that to YouTube after you confirm. Everywhere else (Gaming and other topic pages, search) the menu says **Hide channel**. Either way ClearTV keeps its own list of hidden channels, so their videos leave every YouTube row, More like this grid and Up next queue right away and stay gone, even where YouTube's own setting doesn't reach. **Settings → Hidden channels** shows one again.
 - **Up next:** a small card in the top-left corner at the end of a video, clear of the progress bar and controls: OK plays the next one now, and the Autoplay switch sits right next to it. Autoplay is **off** unless you turn it on.
 - **Quality you choose:** Auto (climbs to the best your TV and connection allow), 1080p, 720p or 480p. The real resolution is shown on screen.
 - **Watchlist row:** your saved titles from every service on the home screen.
-- **Hover previews:** rest on a tile to see a muted preview: real video on YouTube, Tubi and Pluto TV; on Prime Video, artwork with title and description (Prime streams are DRM-protected). Can be turned off in Settings.
+- **Hover previews:** rest on a tile to see a muted preview: real video on YouTube, Tubi and Pluto TV, and the trailer on Paramount+; on Prime Video, artwork with title and description (Prime streams are DRM-protected). Can be turned off in Settings.
 - **Voice search:** press the search/mic button on the remote. If Fire OS doesn't offer speech recognition to apps (it often keeps the mic for Alexa), ClearTV opens keyboard search instead, with a QR code so you can type on your phone.
 - **Phone remote and keyboard:** scan the QR code on the TV to get a remote (arrows, OK, Back, play/pause, seek) and a keyboard for any text box on your phone. It works only on your home network, uses a random secret link, starts only when its QR code is shown, and turns itself off after 10 minutes unused or when you leave ClearTV (or right away from Settings).
 - **Profiles:** pick who's watching on services whose accounts have profiles (Prime Video, YouTube).
-- **Easy sign-in:** **Settings → Sign in to all services** walks through YouTube, Tubi, Prime Video and Pluto TV one after another, with codes or QR codes, so you never type a password with the remote.
+- **Easy sign-in:** **Settings → Sign in to all services** walks through YouTube, Tubi, Prime Video, Paramount+ and Pluto TV one after another, with codes or QR codes, so you never type a password with the remote.
 - **Backup and restore** of your favorites, resume points and settings.
 
 <p>
@@ -71,7 +71,7 @@ ClearTV is **free and open source**. All of the code is here in this repo, so an
 - **Settings built in.** The few settings ClearTV needs for each service are part of the app. ClearTV doesn't download them from any server; when a service changes something, the fix comes in a normal ClearTV update.
 - **Filter list.** Well-known public block lists (EasyList, EasyPrivacy, uBlock Origin lists and others) stop ad and tracker requests. ClearTV never blocks the shows themselves.
 
-> Some ads are built into the video stream by the service itself (live channels on Pluto TV, Tubi Live TV and Prime Video, and some Prime Video titles). No app can remove those, and ClearTV doesn't try.
+> Some ads are built into the video stream by the service itself (live channels on Pluto TV, Tubi Live TV, Prime Video and Paramount+, some Prime Video titles, and Paramount+ shows and movies on the Essential plan). No app can remove those, and ClearTV doesn't try.
 
 ---
 
@@ -250,13 +250,13 @@ Every ClearTV version and what changed for you is listed in **[CHANGELOG.md](CHA
 No. ClearTV is a normal app. It doesn't modify Fire OS, doesn't need root and doesn't change system settings.
 
 **Do I still need my subscriptions?**
-Yes. Prime Video titles need your own Prime account. YouTube, Pluto TV and Tubi work free, as they always do.
+Yes. Prime Video titles need your own Prime account, and Paramount+ shows, movies and live channels need your own Paramount+ plan (its trailers and Extras play without one). YouTube, Pluto TV and Tubi work free, as they always do.
 
 **How do I sign in to Prime Video?**
 Open Prime Video in ClearTV and choose **Sign in**. ClearTV shows a short code. Enter it at amazon.com/code on your phone or computer. You never type your password on the TV. You can also sign in to every service in one go from **Settings → Sign in to all services**.
 
 **Why do I still see an ad on a live channel?**
-Live channels (Pluto TV, Tubi Live TV, Prime Video live stations) and some Prime titles put ads directly inside the video. ClearTV blocks page ads and trackers, but it can't cut ads out of the video itself.
+Live channels (Pluto TV, Tubi Live TV, Prime Video live stations, Paramount+), some Prime titles and Paramount+ Essential put ads directly inside the video. ClearTV blocks page ads and trackers, but it can't cut ads out of the video itself.
 
 **Will it skip to the next episode on its own?**
 Only if you want it to. **Autoplay next** is off by default; you can turn it on in Settings.
@@ -292,6 +292,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) to send changes back.
 
 ## Disclaimer
 
-ClearTV is a personal project. It is not affiliated with or endorsed by Amazon, Google/YouTube, Pluto TV, Tubi or any other service. All service names, logos, shows and artwork belong to their owners; screenshots are shown only to illustrate the app. You're responsible for using each service under its own terms. ClearTV is provided as-is, without any warranty.
+ClearTV is a personal project. It is not affiliated with or endorsed by Amazon, Google/YouTube, Paramount, Pluto TV, Tubi or any other service. All service names, logos, shows and artwork belong to their owners; screenshots are shown only to illustrate the app. You're responsible for using each service under its own terms. ClearTV is provided as-is, without any warranty.
 
 Full text: [DISCLAIMER.md](DISCLAIMER.md). License: [GPL-3.0](LICENSE).

@@ -13,6 +13,16 @@ import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.datasource.HttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.dash.DashMediaSource;
+import androidx.media3.exoplayer.dash.DefaultDashChunkSource;
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManager;
+import androidx.media3.exoplayer.drm.DrmSessionManager;
+import androidx.media3.exoplayer.drm.DrmSessionManagerProvider;
+import androidx.media3.exoplayer.drm.ExoMediaDrm;
+import androidx.media3.exoplayer.drm.FrameworkMediaDrm;
+import androidx.media3.exoplayer.drm.HttpMediaDrmCallback;
+import androidx.media3.exoplayer.drm.MediaDrmCallback;
+import androidx.media3.exoplayer.drm.MediaDrmCallbackException;
 import androidx.media3.exoplayer.hls.HlsDataSourceFactory;
 import androidx.media3.exoplayer.hls.HlsMediaSource;
 import androidx.media3.exoplayer.hls.playlist.DefaultHlsPlaylistParserFactory;
@@ -77,6 +87,70 @@ public final class FastLoad {
         });
         f.setLoadErrorHandlingPolicy(new Policy());
         if (liveOffsetS > 0) f.setPlaylistParserFactory(new LiveStart(liveOffsetS));
+        return f;
+    }
+
+    /**
+     * A DASH source factory with the same short timeouts and fast retries. With a {@code licenseUrl} the stream is
+     * Widevine-protected: licenses are requested from that URL with {@code licenseHeaders} (for example the
+     * service's bearer token). The license answer's outcome is logged (HTTP status only, never the token).
+     */
+    public static DashMediaSource.Factory dash(String ua, @Nullable Map<String, String> headers,
+                                               @Nullable String licenseUrl, @Nullable Map<String, String> licenseHeaders,
+                                               final String tag) {
+        final DataSource.Factory[] manifests = tiers(ua, headers, PLAYLIST_MS);
+        final DataSource.Factory[] media = tiers(ua, headers, MEDIA_MS);
+        DashMediaSource.Factory f = new DashMediaSource.Factory(
+                new DefaultDashChunkSource.Factory(new DataSource.Factory() {
+                    @Override
+                    public DataSource createDataSource() {
+                        return new Escalating(media);
+                    }
+                }),
+                new DataSource.Factory() {
+                    @Override
+                    public DataSource createDataSource() {
+                        return new Escalating(manifests);
+                    }
+                });
+        f.setLoadErrorHandlingPolicy(new Policy());
+        if (licenseUrl != null && !licenseUrl.isEmpty()) {
+            final HttpMediaDrmCallback http = new HttpMediaDrmCallback(licenseUrl, http(ua, null, 8_000, 10_000));
+            if (licenseHeaders != null) {
+                for (Map.Entry<String, String> e : licenseHeaders.entrySet()) http.setKeyRequestProperty(e.getKey(), e.getValue());
+            }
+            MediaDrmCallback logged = new MediaDrmCallback() {
+                @Override
+                public byte[] executeProvisionRequest(java.util.UUID uuid, ExoMediaDrm.ProvisionRequest request) throws MediaDrmCallbackException {
+                    return http.executeProvisionRequest(uuid, request);
+                }
+
+                @Override
+                public byte[] executeKeyRequest(java.util.UUID uuid, ExoMediaDrm.KeyRequest request) throws MediaDrmCallbackException {
+                    try {
+                        byte[] b = http.executeKeyRequest(uuid, request);
+                        Log.i("CTV.Drm", tag + " license: HTTP 200, " + b.length + " bytes");
+                        return b;
+                    } catch (MediaDrmCallbackException e) {
+                        Throwable c = e.getCause();
+                        String why = c instanceof HttpDataSource.InvalidResponseCodeException
+                                ? "HTTP " + ((HttpDataSource.InvalidResponseCodeException) c).responseCode
+                                : String.valueOf(c);
+                        Log.w("CTV.Drm", tag + " license failed: " + why);
+                        throw e;
+                    }
+                }
+            };
+            final DefaultDrmSessionManager drm = new DefaultDrmSessionManager.Builder()
+                    .setUuidAndExoMediaDrmProvider(C.WIDEVINE_UUID, FrameworkMediaDrm.DEFAULT_PROVIDER)
+                    .build(logged);
+            f.setDrmSessionManagerProvider(new DrmSessionManagerProvider() {
+                @Override
+                public DrmSessionManager get(androidx.media3.common.MediaItem item) {
+                    return drm;
+                }
+            });
+        }
         return f;
     }
 

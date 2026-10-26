@@ -77,6 +77,9 @@ final class Services {
             new Service("tubi", "Tubi", "https://tubitv.com/home", Prefs.UA_DESKTOP, Prefs.NAV_FOCUS,
                     new String[]{"tubitv.com", "tubi.tv"}, "tubitv.com", "Free movies & TV",
                     com.goomero.cleartv.tv.ServiceActivity.class),
+            new Service("paramount", "Paramount+", "https://www.paramountplus.com/", Prefs.UA_DESKTOP, Prefs.NAV_FOCUS,
+                    new String[]{"paramountplus.com", "pplusstatic.com", "cbsig.net"}, "www.paramountplus.com",
+                    "Movies, shows & live", com.goomero.cleartv.tv.ServiceActivity.class),
     };
 
     private Services() {}

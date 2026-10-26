@@ -2,13 +2,14 @@ package com.goomero.cleartv.tv;
 
 /**
  * Page-side ad guard for on-demand players in the web screen, added at document start to the service's own
- * frames (YouTube's embed player, primevideo.com):
+ * frames (YouTube's embed player, primevideo.com, paramountplus.com):
  * <ul>
  *   <li>YouTube: removes ad placements (adPlacements, playerAds, adSlots) from every player answer before the
  *   player reads it (JSON.parse, fetch's Response.json, ytInitialPlayerResponse), so no ad break is scheduled;
  *   if an ad still starts, it is skipped (skip button, or jump to the ad's end).</li>
  *   <li>Prime Video: its ads are stitched into the stream and the player does not allow seeking past them, so
  *   while the player shows its ad timer the video runs muted at 16x and returns to normal speed afterwards.</li>
+ *   <li>Paramount+: the same for its stitched (server-side) ad breaks, detected by the player's ad layer.</li>
  * </ul>
  * Reports go to the blocker's bridge (counted in Settings > Ad blocking).
  */
@@ -43,6 +44,19 @@ final class AdGuardJs {
                 + "var vis=t&&t.getBoundingClientRect().width>0;var v=big();if(!v)return;"
                 + "if(vis){if(!on){on=true;wasMuted=v.muted;rep('prime: ad break fast-forwarded');}"
                 + "v.muted=true;if(v.playbackRate!==16){try{v.playbackRate=16;}catch(e){}}}"
-                + "else if(on){on=false;try{v.playbackRate=1;}catch(e){}v.muted=wasMuted;}},250);}})();";
+                + "else if(on){on=false;try{v.playbackRate=1;}catch(e){}v.muted=wasMuted;}},250);}"
+                // Paramount+: Essential plans get ad breaks stitched into the stream (Google DAI) and its player
+                // refuses to seek while one plays; its ad layer (data-role=adContainer) is shown only during a
+                // break, and then the video runs muted at 16x like Prime's
+                + "if(/(^|\\.)paramountplus\\.com$/.test(h)){var pon=false,pMuted=false,pv=null;"
+                + "var pbig=function(){var b=null,a=-1,l=document.querySelectorAll('video');for(var i=0;i<l.length;i++){"
+                + "var r=l[i].getBoundingClientRect(),s=r.width*r.height;if(s>a){a=s;b=l[i];}}return b;};"
+                + "setInterval(function(){var c=document.querySelector('[data-role=adContainer]');"
+                + "var vis=false;if(c){var cs=getComputedStyle(c);vis=cs.display!=='none'&&cs.visibility!=='hidden'&&c.getBoundingClientRect().width>0;}"
+                + "var v=pbig();if(!v)return;"
+                + "if(vis){if(!pon){pon=true;pv=v;pMuted=v.muted;rep('paramount: ad break fast-forwarded');}"
+                + "v.muted=true;if(v.playbackRate!==16){try{v.playbackRate=16;}catch(e){}}}"
+                + "else if(pon){pon=false;var w=pv||v;try{w.playbackRate=1;}catch(e){}w.muted=pMuted;if(w!==v){try{v.playbackRate=1;}catch(e){}}}},250);}"
+                + "})();";
     }
 }

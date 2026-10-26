@@ -201,7 +201,7 @@ Every component has `type` and may have these common keys:
 
 **Data bindings** (`data` on rows and grids): `services`, `continue` (Continue watching), `watchlist` or `favorites`
 (the Watchlist), `focused-service` (the Continue watching and Watchlist of the service focused in a nav or services
-row: a Top Shelf), `search` (a Search all card), `service:youtube`, `service:prime`, `service:tubi`, `service:pluto`
+row: a Top Shelf), `search` (a Search all card), `service:youtube`, `service:prime`, `service:tubi`, `service:pluto`, `service:paramount`
 (that service's items). Every row and grid works for all four services; empty ones hide unless `hideEmpty: false`.
 
 **Card template** (`card`): `width` (80-480 dp, times `tiles.size`), `aspect` (`16:9`, `2:1`, `21:9`, `4:3`;

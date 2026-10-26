@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit;
  */
 final class AllSource extends Source {
     private static final String TAG = "CTV.All";
-    private static final String[][] SERVICES = {{"prime", "Prime Video"}, {"youtube", "YouTube"}, {"tubi", "Tubi"}, {"pluto", "Pluto TV"}};
+    private static final String[][] SERVICES = {{"prime", "Prime Video"}, {"youtube", "YouTube"}, {"tubi", "Tubi"}, {"paramount", "Paramount+"}, {"pluto", "Pluto TV"}};
 
     AllSource(Context c) {
         super(c, "all");

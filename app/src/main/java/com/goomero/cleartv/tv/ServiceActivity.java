@@ -555,7 +555,7 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
      * (and the copy PageCache keeps) stays without it, so the row is always fresh.
      */
     private Item.Page withContinue(Item.Page raw) {
-        Item.Shelf row = continueShelf();
+        Item.Shelf row = continueShelf(raw);
         continueRow = row;
         if (raw == null || row == null) return raw;
         Item.Page p = new Item.Page();
@@ -571,11 +571,14 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
         return p;
     }
 
-    private Item.Shelf continueShelf() {
+    /** {@code page}: the section below it; the account's history is left out when the page has it as its own row. */
+    private Item.Shelf continueShelf(Item.Page page) {
         String svc = source.id();
         if (svc.equals("all")) return null;
         List<Item> items = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
+        java.util.Set<String> own = new java.util.HashSet<>();
+        if (page != null) for (Item.Shelf sh : page.shelves) if (sh.mixed && sh != continueRow) for (Item i : sh.items) own.add(i.id);
         for (Library.Entry e : Library.continueWatching(this)) {
             if (!e.service.equals(svc) || !seen.add(e.item.id)) continue;
             e.item.progress = e.progress();
@@ -584,7 +587,7 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
         int n = 0;
         for (Item it : Library.history(this, svc)) {
             if (n++ >= 6 || items.size() >= Library.MAX_PROGRESS) break;
-            if (seen.add(it.id)) items.add(it);
+            if (!own.contains(it.id) && seen.add(it.id)) items.add(it);
         }
         return items.isEmpty() ? null : new Item.Shelf("Continue watching", items);
     }
@@ -603,7 +606,7 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
         if (p == null || selectedNav != 0 || !stack.isEmpty() || p.detail != null) return;
         Item.Shelf old = continueRow;
         boolean had = old != null && !p.shelves.isEmpty() && p.shelves.get(0) == old;
-        Item.Shelf row = continueShelf();
+        Item.Shelf row = continueShelf(p);
         if (!had && row == null) return;
         int fr = shelf.focusRow(), fc = shelf.focusCol();
         if (had) p.shelves.remove(0);
@@ -1600,7 +1603,7 @@ public final class ServiceActivity extends Activity implements ShelfView.Listene
     /** This screen's source for {@code svc}, or a new one for a tile of another service (all-services search). */
     private Source sourceOrNew(String svc) {
         if (svc.equals(source.id())) return source;
-        if (!svc.equals("youtube") && !svc.equals("tubi") && !svc.equals("prime")) return null;
+        if (!svc.equals("youtube") && !svc.equals("tubi") && !svc.equals("prime") && !svc.equals("paramount")) return null;
         return Source.create(this, svc);
     }
 

@@ -37,7 +37,9 @@ public final class PageCache {
                 Item.Shelf s = p.shelves.get(i);
                 JSONArray items = new JSONArray();
                 for (int j = 0; j < Math.min(20, s.items.size()); j++) items.put(Library.toJson(s.items.get(j)));
-                shelves.put(new JSONObject().put("t", s.title).put("i", items));
+                JSONObject o = new JSONObject().put("t", s.title).put("i", items);
+                if (s.mixed) o.put("m", true);
+                shelves.put(o);
             }
             File f = file(c, service), tmp = new File(f.getPath() + ".tmp");
             try (FileOutputStream o = new FileOutputStream(tmp)) {
@@ -68,7 +70,9 @@ public final class PageCache {
                 JSONArray items = s.getJSONArray("i");
                 List<Item> list = new ArrayList<>();
                 for (int j = 0; j < items.length(); j++) list.add(Library.fromJson(items.getJSONObject(j)));
-                p.shelves.add(new Item.Shelf(s.optString("t"), list));
+                Item.Shelf sh = new Item.Shelf(s.optString("t"), list);
+                sh.mixed = s.optBoolean("m", false);
+                p.shelves.add(sh);
             }
             return p;
         } catch (JSONException | IOException e) {

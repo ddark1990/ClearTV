@@ -55,7 +55,7 @@ final class Startup {
         long t0 = android.os.SystemClock.uptimeMillis();
         String last = ((App) c).prefs.lastService();
         boolean changed = false;
-        for (String id : new String[]{"youtube", "tubi", "prime"}) {
+        for (String id : new String[]{"youtube", "tubi", "prime", "paramount"}) {
             Source s = Source.create(c, id);
             try {
                 s.refreshSession();

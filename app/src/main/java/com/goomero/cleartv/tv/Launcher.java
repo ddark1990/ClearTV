@@ -63,7 +63,9 @@ public final class Launcher {
                     StartTrace.begin(source.id(), pressedAt);
                     final Source.Playback p = source.play(it);
                     StartTrace.mark("stream resolved (" + (p.hls != null ? "own player" : "web player") + ")");
-                    final long resume = fromStart ? 0 : p.resumeMs > 0 ? p.resumeMs : Library.resumeAt(a, source.id(), it.id);
+                    // where it stopped in ClearTV, else where the service says the account stopped
+                    final long saved = fromStart ? 0 : Library.resumeAt(a, source.id(), it.id);
+                    final long resume = fromStart ? 0 : saved > 0 ? saved : p.resumeMs;
                     MAIN.post(new Runnable() {
                         @Override
                         public void run() {
@@ -208,7 +210,7 @@ public final class Launcher {
     /** The episodes after {@code it} in its row (at most 25), for auto-play next. */
     public static List<Item> after(Item.Shelf shelf, Item it) {
         List<Item> out = new ArrayList<>();
-        if (shelf == null) return out;
+        if (shelf == null || shelf.mixed) return out;
         int i = shelf.items.indexOf(it);
         for (int k = 0; i < 0 && k < shelf.items.size(); k++) if (shelf.items.get(k).id.equals(it.id)) i = k;
         if (i < 0) return out;

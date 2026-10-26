@@ -20,7 +20,7 @@ import java.util.Map;
 public final class HealthCheck {
     private static final String TAG = "CTV.Health";
     private static final long EVERY_MS = 12 * 3600_000L;
-    public static final String[] SERVICES = {"prime", "youtube", "pluto", "tubi"};
+    public static final String[] SERVICES = {"prime", "youtube", "pluto", "tubi", "paramount"};
 
     /** One service's last result. */
     public static final class Status {
@@ -105,6 +105,16 @@ public final class HealthCheck {
             step = "search";
             Item.Page found = s.search(Config.s(service + ".probe.search", "news"));
             if (found.isEmpty()) return "search: no results";
+            if (service.equals("paramount")) {
+                // titles play in Paramount+'s web player (DRM); a trailer's clear stream proves the media path
+                step = "trailer";
+                for (Item it : videos) {
+                    if (!s.previewVideo(it)) continue;
+                    Source.Playback pb = s.previewPlayback(it);
+                    return pb.hls == null || pb.hls.isEmpty() ? "trailer: no stream" : null;
+                }
+                return null;
+            }
             step = "stream";
             if (service.equals("youtube")) {
                 videos.clear();
@@ -147,7 +157,7 @@ public final class HealthCheck {
                 Map<String, String> h = pb.headers == null ? new HashMap<String, String>() : new HashMap<>(pb.headers);
                 if (pb.userAgent != null) h.put("User-Agent", pb.userAgent);
                 String m = new String(Http.get(pb.hls, h), StandardCharsets.UTF_8);
-                return m.startsWith("#EXTM3U") ? null : "not a playlist";
+                return m.startsWith("#EXTM3U") || (pb.dash && m.contains("<MPD")) ? null : "not a playlist";
             }
             return pb.webUrl == null ? "nothing to play" : null;
         } catch (IOException | RuntimeException e) {

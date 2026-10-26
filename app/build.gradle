@@ -130,9 +130,11 @@ dependencies {
     // Only for WebViewCompat.addDocumentStartJavaScript (content.js in every frame before page scripts), which the
     // framework WebView API does not expose. R8 keeps just the classes that call uses; no AppCompat or Material.
     implementation 'androidx.webkit:webkit:1.12.1'
-    // Native Pluto TV viewer (pluto/): ExoPlayer with the HLS module only. No -ui (own overlay), -dash, -okhttp
-    // or -session; HlsMediaSource is passed explicitly so DefaultMediaSourceFactory and other formats are stripped.
+    // ClearTV's own player: ExoPlayer with the HLS module, plus the DASH module of the same Media3 release for
+    // Paramount+ (its full episodes and films exist only as Widevine DASH). No -ui (own overlay), -okhttp or
+    // -session; media sources are passed explicitly so DefaultMediaSourceFactory and other formats are stripped.
     // 1.4.1 is the newest Media3 that builds against compileSdk 34 / AGP 8.5 (1.5+ needs 35, 1.11 needs 36).
     implementation 'androidx.media3:media3-exoplayer:1.4.1'
     implementation 'androidx.media3:media3-exoplayer-hls:1.4.1'
+    implementation 'androidx.media3:media3-exoplayer-dash:1.4.1'
 }
