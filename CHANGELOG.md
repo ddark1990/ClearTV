@@ -26,6 +26,7 @@ Download builds from [Releases](https://github.com/ddark1990/ClearTV/releases). 
 - **Paramount+ sign-in by QR fills in the code**: scanning the QR code on the Paramount+ sign-in card now opens the activation page on your phone with the TV's code already entered, so you only sign in and confirm (before, the page opened empty and the code had to be typed).
 - **Paid Paramount+ episodes and movies play in ClearTV's own player** once you are signed in: full HD, with ClearTV's controls, quality and captions menu and seeking. Paramount+ sends ClearTV its ad-free version of the stream, so there are no ad breaks to sit through. Titles start where you stopped watching, on this TV or any other device. Some of Paramount+'s newest titles are not offered this way yet; those still open in the Paramount+ web player inside ClearTV.
 - **One Keep Watching row** on Paramount+ Home and My Stuff: ClearTV's own Continue watching row no longer repeats titles Paramount+ already lists, and finishing a title from Keep Watching or My List no longer starts an unrelated title next (Up next still follows the episodes of a show).
+- The README now says that paid Paramount+ episodes and movies play without ads in ClearTV's player (the newest titles may still use Paramount+'s web player with its breaks sped up), and shows a Paramount+ screenshot.
 
 ## 0.1.22 (2026-10-23)
 
