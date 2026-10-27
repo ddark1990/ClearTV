@@ -192,8 +192,8 @@ public final class ThemeActivity extends Activity {
             }
         }
         if (want == null) want = first;
-        if (want != null) want.requestFocus();
-        if (focusKey == null || want == null || !(want.getTag() instanceof String) || !((String) want.getTag()).startsWith("t:")) show(Themes.active());
+        // The focused row's listener points the preview at that row. Fall back only when nothing took focus.
+        if (want == null || !want.requestFocus()) show(Themes.active());
     }
 
     private Action select(final Theme t) {
@@ -241,6 +241,7 @@ public final class ThemeActivity extends Activity {
         v.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override
             public void onFocusChange(View x, boolean has) {
+                // The name updates now. The picture waits until the highlight rests (ThemePreview).
                 if (has) show(theme != null ? theme : Themes.active());
             }
         });
@@ -250,7 +251,6 @@ public final class ThemeActivity extends Activity {
     }
 
     private void show(Theme t) {
-        preview.setTheme(t);
         pName.setText(t.name.toUpperCase(java.util.Locale.ROOT));
         StringBuilder b = new StringBuilder();
         if (!t.author.isEmpty()) b.append("by ").append(t.author).append(" · ");
@@ -259,6 +259,7 @@ public final class ThemeActivity extends Activity {
         else b.append(t.engine).append(" layout · ").append(t.header).append(" header");
         if (t.servicesStyle.equals("hero")) b.append(" · hero row");
         pInfo.setText(b.toString());
+        preview.setTheme(t);
     }
 
     // ------------------------------------------------------------------------------------------- overlays

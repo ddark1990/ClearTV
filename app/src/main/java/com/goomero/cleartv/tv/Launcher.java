@@ -125,6 +125,11 @@ public final class Launcher {
                         @Override
                         public void run() {
                             Library.record(a, serviceId, item, pos, dur);
+                            try {
+                                Source.create(a, serviceId).noteWatch(item, pos, dur);
+                            } catch (IllegalArgumentException ignored) {
+                                // a service without a native screen keeps the position only
+                            }
                         }
                     });
                 }

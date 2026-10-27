@@ -163,6 +163,12 @@ public abstract class Source {
         return false;
     }
 
+    /**
+     * A real playback position (every few seconds, and when leaving), never a hover preview. The default does
+     * nothing; a service that learns from what you watch can record it here. Not the main thread.
+     */
+    public void noteWatch(Item it, long posMs, long durMs) {}
+
     /** The service's own similar titles for the tile (background thread). */
     public Item.Page similar(Item it) throws IOException {
         throw new IOException(name() + " has no similar titles.");

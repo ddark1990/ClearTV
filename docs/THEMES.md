@@ -37,8 +37,9 @@ The built-ins (Stargazer, Top Shelf, Billboard) live in `app/src/main/assets/the
 | `oled` (store) | OLED High Contrast | The Top Shelf layout on pure black with white text, a thick yellow focus ring and larger text. | Tabs. |
 | `candy` (store) | Candy | A 2x2 grid of big service tiles on the left with glowing focus; on the right the clock, a large hero, Watchlist and Continue watching; Search, Themes and Settings as pills. | Sidebar. |
 
-Pick one with the **Themes** button on the home screen or in **Settings > Theme**. Moving through the list shows a
-live preview: for version 2 themes it is the real home, built with that theme and drawn small. OK applies it.
+Pick one with the **Themes** button on the home screen or in **Settings > Theme**. Moving through the list stays
+smooth, and the live preview updates when you pause on a theme: for version 2 themes it is the real home, built
+with that theme and drawn small. OK applies it.
 
 ### Design notes: the tvOS look (Top Shelf, OLED High Contrast)
 

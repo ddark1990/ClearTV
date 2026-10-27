@@ -240,9 +240,12 @@ final class YouTubeSource extends Source {
         String[] parts = nav.id.split("\\|", 2);
         Item.Page p = browse(parts[0], parts.length > 1 ? parts[1] : null);
         // YouTube's own Home is empty while signed out (it only offers a search box); show the top rows of each
-        // topic instead, the closest thing to the TV app's signed-out start page
-        if (nav.id.equals("FEtopics") && p.isEmpty()) p = topicsHome();
+        // topic instead, the closest thing to the TV app's signed-out start page. Which topic leads rotates, so
+        // the signed-out home is not the same stitch every visit.
+        if (nav.id.equals("FEtopics") && p.isEmpty()) p = topicsHome(prefs.getInt("home_visit", 0));
         if (nav.id.equals("FEtopics_movies") && p.isEmpty()) p = moviesFallback();
+        // Home, signed in or out: videos already shown move back, and a fresh-search row brings newer channels.
+        if (nav.id.equals("FEtopics")) p = refreshHome(p);
         return p;
     }
 
@@ -277,9 +280,12 @@ final class YouTubeSource extends Source {
         return p;
     }
 
-    private Item.Page topicsHome() throws IOException {
-        final String[] topics = {"FEtopics_music", "FEtopics_live", "FEtopics_gaming", "FEtopics_news",
+    private Item.Page topicsHome(int shift) throws IOException {
+        final String[] base = {"FEtopics_music", "FEtopics_live", "FEtopics_gaming", "FEtopics_news",
                 "FEtopics_sports", "FEtopics_movies", "FEtopics_podcasts"};
+        final String[] topics = new String[base.length];
+        int start = Math.floorMod(shift, base.length);
+        for (int i = 0; i < base.length; i++) topics[i] = base[(start + i) % base.length];
         java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(3);
         try {
             List<java.util.concurrent.Future<Item.Page>> parts = new ArrayList<>();
@@ -318,6 +324,407 @@ final class YouTubeSource extends Source {
             return out;
         } finally {
             pool.shutdownNow();
+        }
+    }
+
+    /**
+     * Home was the same rows every visit: signed out, YouTube's home is only a sign-in box, so the topic shelves
+     * were stitched in a fixed order; signed in, it is one browse and playback in the embed player never tells
+     * YouTube what was watched, so its recommended shelf stays put. Videos already shown move to the back (and a
+     * shelf that was entirely shown rotates), a couple of rows that were already seen load their next page, and a
+     * search limited to this month's uploads adds newer videos from smaller channels.
+     */
+    private Item.Page refreshHome(Item.Page p) {
+        if (p == null || p.isEmpty()) return p;
+        long t0 = android.os.SystemClock.uptimeMillis();
+        int visit = prefs.getInt("home_visit", 0);
+        Set<String> seen = new HashSet<>(readSeen());
+        int continued = deepen(p, seen, t0);
+        int demoted = 0;
+        for (Item.Shelf s : p.shelves) demoted += Fresh.demote(s.items, seen, visit);
+        List<Item> personal = personalSeeds();
+        List<Item> seeds = Fresh.pickSeeds(personal, pageVideos(p, seen), visit, Config.i("youtube.home.seeds", 2));
+        int added = 0;
+        try {
+            added = discoverInto(p, seeds, personal.isEmpty(), seen);
+        } catch (IOException e) {
+            Log.w(TAG, "home fresh: " + e.getMessage());
+        }
+        rememberSeen(p, visit);
+        Log.i(TAG, "home fresh: visit " + visit + ", continued " + continued + ", demoted " + demoted
+                + ", seeds " + seeds.size() + (personal.isEmpty() ? " from the page" : " from watched")
+                + ", new " + added + " in " + (android.os.SystemClock.uptimeMillis() - t0) + " ms");
+        return p;
+    }
+
+    /** The next page of a shelf whose front was already shown, so the following visit is not those same tiles. */
+    private int deepen(Item.Page p, Set<String> seen, long t0) {
+        int n = 0, max = Config.i("youtube.home.continuations", 2);
+        long until = t0 + Config.i("youtube.home.continuationMs", 2000);
+        for (Item.Shelf s : new ArrayList<>(p.shelves)) {
+            if (n >= max || android.os.SystemClock.uptimeMillis() > until) break;
+            if (s.more == null || s.items.size() < 4) continue;
+            int front = Math.min(8, s.items.size()), known = 0;
+            for (int i = 0; i < front; i++) if (seen.contains(s.items.get(i).id)) known++;
+            if (known * 2 < front) continue;
+            try {
+                Item.Shelf more = moreRow(s.more);
+                if (more == null || more.items.isEmpty()) continue;
+                Set<String> ids = new HashSet<>();
+                for (Item it : s.items) ids.add(it.id);
+                int before = s.items.size();
+                for (Item it : more.items) if (ids.add(it.id)) s.items.add(it);
+                if (more.more != null) s.more = more.more;
+                if (s.items.size() > before) n++;
+            } catch (IOException e) {
+                Log.w(TAG, "home fresh: a continuation failed");
+            }
+        }
+        return n;
+    }
+
+    /** Videos on the page that can seed a search: ones not shown yet first, one per channel. */
+    private List<Item> pageVideos(Item.Page p, Set<String> seen) {
+        List<Item> fresh = new ArrayList<>(), old = new ArrayList<>();
+        Set<String> chans = new HashSet<>();
+        for (Item.Shelf s : p.shelves) for (Item it : s.items) {
+            if (fresh.size() + old.size() >= 16) return join(fresh, old);
+            if (!videoId(it) || !it.commerce.isEmpty()) continue;
+            String ch = it.channel != null && it.channel.id.startsWith("UC") ? it.channel.id : channelName(it.subtitle);
+            if (!ch.isEmpty() && !chans.add(ch)) continue;
+            (seen.contains(it.id) ? old : fresh).add(it);
+        }
+        return join(fresh, old);
+    }
+
+    private static List<Item> join(List<Item> a, List<Item> b) {
+        List<Item> out = new ArrayList<>(a);
+        out.addAll(b);
+        return out;
+    }
+
+    private static boolean videoId(Item it) {
+        return it != null && (it.kind == Item.VIDEO || it.kind == Item.LIVE) && it.id.matches("[A-Za-z0-9_-]{11}");
+    }
+
+    /**
+     * One row of newer videos (and, when there are a few, their channels), from a this-month search for each seed.
+     * Seeds are recent watches when there are any, otherwise videos already on the home. Returns how many videos
+     * were added.
+     */
+    private int discoverInto(Item.Page p, final List<Item> seeds, boolean fromPage, Set<String> seen) throws IOException {
+        if (seeds.isEmpty()) return 0;
+        final long until = android.os.SystemClock.uptimeMillis() + Config.i("youtube.home.freshMs", 2800);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(Math.max(1, seeds.size()));
+        try {
+            List<java.util.concurrent.Future<Found>> jobs = new ArrayList<>();
+            for (final Item seed : seeds) {
+                jobs.add(pool.submit(new java.util.concurrent.Callable<Found>() {
+                    @Override
+                    public Found call() throws IOException {
+                        return findFresh(seed);
+                    }
+                }));
+            }
+            List<Found> found = new ArrayList<>();
+            for (java.util.concurrent.Future<Found> f : jobs) {
+                try {
+                    Found one = await(f, until);
+                    if (one != null && !one.items.isEmpty()) found.add(one);
+                } catch (IOException e) {
+                    Log.w(TAG, "home fresh: a search failed");
+                }
+            }
+            if (found.isEmpty()) return 0;
+            Set<String> onPage = new HashSet<>();
+            for (Item.Shelf s : p.shelves) for (Item it : s.items) onPage.add(it.id);
+            for (Item seed : seeds) onPage.add(seed.id);
+            List<HiddenChannels.Entry> hidden = HiddenChannels.of(app, id());
+            List<List<Item>> cols = new ArrayList<>();
+            for (Found f : found) cols.add(rankFresh(f, onPage, seen, hidden));
+            int max = Config.i("youtube.home.channels", 12);
+            List<Item> lead = new ArrayList<>();
+            Set<String> ids = new HashSet<>(), chans = new HashSet<>();
+            for (int round = 0; lead.size() < max; round++) {
+                boolean any = false;
+                for (List<Item> col : cols) {
+                    if (round >= col.size()) continue;
+                    any = true;
+                    Item x = col.get(round);
+                    String ch = x.channel != null && x.channel.id.startsWith("UC") ? x.channel.id : channelName(x.subtitle);
+                    if (!ids.add(x.id) || (!ch.isEmpty() && !chans.add(ch))) continue;
+                    if (lead.size() < max) lead.add(x);
+                }
+                if (!any) break;
+            }
+            if (lead.isEmpty()) return 0;
+            List<Item> tiles = new ArrayList<>();
+            for (Item x : lead) {
+                if (x.channel == null || !x.channel.id.startsWith("UC") || tiles.size() >= max) continue;
+                String name = x.channel.title.equals("Channel") ? channelName(x.subtitle) : x.channel.title;
+                Item c = new Item(Item.CHANNEL, x.channel.id, name.isEmpty() ? "Channel" : name, "Channel",
+                        x.channel.image, "", "");
+                tiles.add(c);
+            }
+            int inserted = 0;
+            if (tiles.size() >= 2) {
+                Item.Shelf cs = new Item.Shelf(fromPage ? "Channels to try" : "Channels for you", tiles);
+                cs.mixed = true;
+                p.shelves.add(0, cs);
+                inserted++;
+            }
+            Item.Shelf vs = new Item.Shelf(fromPage ? "New channels" : "New for you", lead);
+            vs.mixed = true;
+            p.shelves.add(0, vs);
+            inserted++;
+            p.empty = "";
+            if (p.grid >= 0) p.grid += inserted;
+            return lead.size();
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    /** A this-month search for what {@code seed} is about, plus the descriptor that ranks the results. */
+    private Found findFresh(Item seed) throws IOException {
+        Descriptor.Source meta = new Descriptor.Source();
+        meta.title = seed.title == null ? "" : seed.title;
+        if (seed.channel != null) meta.owner = seed.channel.title;
+        try {
+            Descriptor.Source got = webMeta(seed.id);
+            if (!got.title.isEmpty() || !got.keywords.isEmpty() || !got.description.isEmpty()) {
+                if (got.title.isEmpty()) got.title = meta.title;
+                if (got.owner.isEmpty()) got.owner = meta.owner;
+                meta = got;
+            }
+        } catch (IOException e) {
+            Log.w(TAG, "home fresh: no metadata");
+        }
+        Descriptor d = new Descriptor(meta, descriptorWeights());
+        List<String> qs = d.isEmpty() ? new ArrayList<String>() : d.queries(1, null);
+        String q = qs.isEmpty() ? meta.title.trim() : qs.get(0);
+        if (q.length() > 80) q = q.substring(0, 80);
+        if (q.length() < 3) return null;
+        Found f = new Found();
+        f.descriptor = d.isEmpty() ? null : d;
+        f.snippets = new HashMap<>();
+        String params = Config.s("youtube.home.freshParams", "EgQIBBAB");
+        f.items = webSearch(q, f.snippets, params);
+        // a narrow phrase sometimes has nothing from this month; the title still names the subject
+        if (f.items.isEmpty() && !q.equalsIgnoreCase(meta.title.trim()) && meta.title.trim().length() >= 3) {
+            String t = meta.title.trim();
+            if (t.length() > 80) t = t.substring(0, 80);
+            f.items = webSearch(t, f.snippets, params);
+        }
+        f.srcId = seed.channel != null && seed.channel.id.startsWith("UC") ? seed.channel.id : "";
+        f.srcName = seed.channel != null && !seed.channel.title.equals("Channel") ? seed.channel.title : channelName(seed.subtitle);
+        return f;
+    }
+
+    /** One seed's results, best match and newest modest channels first. Unseen videos lead; seen ones only fill in. */
+    private List<Item> rankFresh(Found f, Set<String> block, Set<String> seen, List<HiddenChannels.Entry> hidden) {
+        final String srcId = f.srcId, srcName = f.srcName == null ? "" : f.srcName;
+        Similar sim = new Similar(new Similar.Key() {
+            @Override
+            public String of(Item x) {
+                if (!videoId(x) || block.contains(x.id)) return null;
+                if (!srcId.isEmpty() && x.channel != null && srcId.equals(x.channel.id)) return null;
+                String n = x.channel != null && !x.channel.title.equals("Channel") ? x.channel.title : channelName(x.subtitle);
+                if (!srcName.isEmpty() && n.equalsIgnoreCase(srcName)) return null;
+                if (n.isEmpty() || n.matches("(?i).*\\d.*\\b(views?|watching|ago)\\b.*")) return null;
+                String[] key = channelKey(x);
+                if (key != null && HiddenChannels.contains(hidden, id(), key)) return null;
+                return n.toLowerCase(java.util.Locale.ROOT).trim();
+            }
+        });
+        sim.add(f.items, 1);
+        List<Similar.Group> groups = sim.ranked();
+        Fresh.Tune tune = homeTune();
+        if (f.descriptor != null) {
+            groups = sim.ranked(f.descriptor.fit(groups, f.snippets, null, descriptorWeights()),
+                    Config.d("youtube.similar.descriptor.fitWeight", 2), Config.d("youtube.similar.descriptor.miss", 0.6));
+            tune.haveMatch = true;
+        }
+        Fresh.tune(groups, null, tune);
+        List<Item> unseen = new ArrayList<>(), rest = new ArrayList<>();
+        for (Similar.Group g : groups) {
+            Item pick = null, fallback = null;
+            for (Item x : g.items) {
+                if (fallback == null) fallback = x;
+                if (!seen.contains(x.id)) {
+                    pick = x;
+                    break;
+                }
+            }
+            if (pick != null) unseen.add(pick);
+            else if (fallback != null) rest.add(fallback);
+        }
+        if (unseen.size() >= 4) return unseen;
+        unseen.addAll(rest);
+        return unseen;
+    }
+
+    private static final class Found {
+        Descriptor descriptor;
+        List<Item> items = new ArrayList<>();
+        Map<String, String> snippets = new HashMap<>();
+        String srcId = "", srcName = "";
+    }
+
+    private static Descriptor.Weights descriptorWeights() {
+        Descriptor.Weights w = new Descriptor.Weights();
+        w.tag = Config.d("youtube.similar.descriptor.tag", w.tag);
+        w.hashtag = Config.d("youtube.similar.descriptor.hashtag", w.hashtag);
+        w.topic = Config.d("youtube.similar.descriptor.topic", w.topic);
+        w.title = Config.d("youtube.similar.descriptor.title", w.title);
+        w.chapter = Config.d("youtube.similar.descriptor.chapter", w.chapter);
+        w.description = Config.d("youtube.similar.descriptor.description", w.description);
+        w.category = Config.d("youtube.similar.descriptor.category", w.category);
+        w.phrase = Config.d("youtube.similar.descriptor.phrase", w.phrase);
+        w.idfFloor = Config.d("youtube.similar.descriptor.idfFloor", w.idfFloor);
+        w.searchFit = Config.d("youtube.similar.descriptor.searchFit", w.searchFit);
+        w.terms = Config.i("youtube.similar.descriptor.terms", w.terms);
+        return w;
+    }
+
+    private static Fresh.Tune homeTune() {
+        Fresh.Tune t = new Fresh.Tune();
+        t.boost = Config.d("youtube.similar.freshBoost", t.boost);
+        t.penalty = Config.d("youtube.similar.repeatPenalty", t.penalty);
+        t.minMatch = Config.d("youtube.similar.freshMinMatch", t.minMatch);
+        t.recentDays = Config.d("youtube.similar.recentDays", t.recentDays);
+        t.monthDays = Config.d("youtube.similar.monthDays", t.monthDays);
+        t.modestViews = Config.i("youtube.similar.modestViews", (int) t.modestViews);
+        t.midViews = Config.i("youtube.similar.midViews", (int) t.midViews);
+        t.megaViews = Config.i("youtube.similar.megaViews", (int) t.megaViews);
+        return t;
+    }
+
+    private List<String> readSeen() {
+        List<String> out = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(prefs.getString("home_seen", "[]"));
+            for (int i = 0; i < a.length(); i++) {
+                String id = a.optString(i, "");
+                if (!id.isEmpty()) out.add(id);
+            }
+        } catch (JSONException ignored) {
+            // a damaged list just starts over
+        }
+        return out;
+    }
+
+    /** The ids now at the front of Home count as shown, so the next visit leads with different ones. */
+    private void rememberSeen(Item.Page p, int visit) {
+        List<String> ids = readSeen();
+        Set<String> have = new HashSet<>(ids);
+        int shelves = 0;
+        for (Item.Shelf s : p.shelves) {
+            if (shelves++ >= 6) break;
+            int n = 0;
+            for (Item it : s.items) {
+                if (n++ >= 8) break;
+                if (videoId(it) && have.add(it.id)) ids.add(it.id);
+            }
+        }
+        int max = Config.i("youtube.home.seen", 240);
+        if (ids.size() > max) ids = new ArrayList<>(ids.subList(ids.size() - max, ids.size()));
+        JSONArray a = new JSONArray();
+        for (String id : ids) a.put(id);
+        prefs.edit().putString("home_seen", a.toString()).putInt("home_visit", visit + 1).apply();
+    }
+
+    /** Watches in ClearTV (including ones finished, which leave Continue watching), then the account's history. */
+    private List<Item> personalSeeds() {
+        java.util.LinkedHashMap<String, Item> map = new java.util.LinkedHashMap<>();
+        for (Item it : recentWatches()) putVideo(map, it);
+        for (Library.Entry e : Library.continueWatching(app)) {
+            if ("youtube".equals(e.service)) putVideo(map, e.item);
+        }
+        for (Item it : Library.history(app, "youtube")) putVideo(map, it);
+        return new ArrayList<>(map.values());
+    }
+
+    private static void putVideo(java.util.LinkedHashMap<String, Item> map, Item it) {
+        if (!videoId(it) || map.containsKey(it.id)) return;
+        map.put(it.id, it);
+    }
+
+    private List<Item> recentWatches() {
+        List<Item> out = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(prefs.getString("recent", "[]"));
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.optJSONObject(i);
+                if (o == null) continue;
+                Item it = new Item(Item.VIDEO, o.optString("i"), o.optString("t"), o.optString("s"), o.optString("img"), "", "");
+                if (!o.optString("c").isEmpty()) {
+                    it.channel = new Item(Item.CHANNEL, o.optString("c"), o.optString("cn", "Channel"), "Channel",
+                            o.optString("ci"), "", "");
+                }
+                if (videoId(it)) out.add(it);
+            }
+        } catch (JSONException ignored) {
+            // start again next time
+        }
+        return out;
+    }
+
+    private void rememberWatch(Item it) {
+        try {
+            JSONArray a = new JSONArray(prefs.getString("recent", "[]"));
+            JSONObject first = a.optJSONObject(0);
+            if (first != null && it.id.equals(first.optString("i"))) return;
+            JSONArray next = new JSONArray();
+            next.put(new JSONObject().put("i", it.id).put("t", it.title).put("s", it.subtitle).put("img", it.image)
+                    .put("c", it.channel != null && it.channel.id.startsWith("UC") ? it.channel.id : "")
+                    .put("cn", it.channel != null ? it.channel.title : "")
+                    .put("ci", it.channel != null ? it.channel.image : ""));
+            for (int i = 0; i < a.length() && next.length() < 12; i++) {
+                JSONObject o = a.optJSONObject(i);
+                if (o == null || it.id.equals(o.optString("i"))) continue;
+                next.put(o);
+            }
+            prefs.edit().putString("recent", next.toString()).apply();
+        } catch (JSONException e) {
+            Log.w(TAG, "recent watch: " + e.getMessage());
+        }
+    }
+
+    /** Channel keys that led the last More like this for this video (so the next one leads with others). */
+    private Set<String> readLeads(String videoId) {
+        Set<String> out = new HashSet<>();
+        try {
+            JSONArray a = new JSONArray(prefs.getString("ml", "[]"));
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.optJSONObject(i);
+                if (o == null || !videoId.equals(o.optString("i"))) continue;
+                JSONArray ks = o.optJSONArray("k");
+                if (ks == null) continue;
+                for (int j = 0; j < ks.length(); j++) out.add(ks.optString(j));
+            }
+        } catch (JSONException ignored) {
+            // no previous leads
+        }
+        return out;
+    }
+
+    private void saveLeads(String videoId, List<String> keys) {
+        if (videoId == null || keys == null || keys.isEmpty()) return;
+        try {
+            JSONArray a = new JSONArray(prefs.getString("ml", "[]"));
+            JSONArray ks = new JSONArray();
+            for (int i = 0; i < keys.size() && i < 8; i++) ks.put(keys.get(i));
+            JSONArray next = new JSONArray();
+            next.put(new JSONObject().put("i", videoId).put("k", ks));
+            for (int i = 0; i < a.length() && next.length() < 40; i++) {
+                JSONObject o = a.optJSONObject(i);
+                if (o == null || videoId.equals(o.optString("i"))) continue;
+                next.put(o);
+            }
+            prefs.edit().putString("ml", next.toString()).apply();
+        } catch (JSONException e) {
+            Log.w(TAG, "more like leads: " + e.getMessage());
         }
     }
 
@@ -608,7 +1015,8 @@ final class YouTubeSource extends Source {
     public Item.Page similar(final Item it, Progress progress) throws IOException {
         final long t0 = android.os.SystemClock.uptimeMillis();
         java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(
-                Math.max(2, Config.i("youtube.similar.seeds", 4)) + Math.max(0, Config.i("youtube.similar.searches", 2)) + 4);
+                Math.max(2, Config.i("youtube.similar.seeds", 4)) + Math.max(0, Config.i("youtube.similar.searches", 2))
+                        + Math.max(0, Config.i("youtube.similar.freshSearches", 1)) + 4);
         try {
             java.util.concurrent.Future<List<Item>> tvF = pool.submit(new java.util.concurrent.Callable<List<Item>>() {
                 @Override
@@ -664,7 +1072,7 @@ final class YouTubeSource extends Source {
             if (srcId.isEmpty() && it.channel != null && it.channel.id.startsWith("UC")) srcId = it.channel.id;
             if (srcName.isEmpty() && it.channel != null && !it.channel.title.equals("Channel")) srcName = it.channel.title;
             if (srcName.isEmpty()) srcName = channelName(it.subtitle);
-            final Mix mix = new Mix(it, srcId, srcName, HiddenChannels.of(app, id()));
+            final Mix mix = new Mix(it, srcId, srcName, HiddenChannels.of(app, id()), readLeads(it.id));
             if (web != null) mix.add(web.items, 1.0);
             if (tv != null) mix.add(tv, 1.0);
             // the descriptor: the web player's metadata (usually in long before the lists), the web page's linked
@@ -694,15 +1102,34 @@ final class YouTubeSource extends Source {
                     return webRelated(v);
                 }
             }));
-            // searches from the descriptor's strongest phrases, for channels the related lists miss
-            final List<String> queries = mix.queries(Config.i("youtube.similar.searches", 2));
+            // searches from the descriptor's strongest phrases, for channels the related lists miss.
+            // The same phrases are also searched with YouTube's "This month" filter: that list is recent small
+            // channels, which a relevance search barely returns.
+            final int nSearch = Config.i("youtube.similar.searches", 2);
+            final int nFresh = Config.i("youtube.similar.freshSearches", 1);
+            final List<String> queries = mix.queries(Math.max(nSearch, 1));
+            final String freshParams = Config.s("youtube.similar.freshParams", "EgQIBBAB");
+            final double freshW = Config.i("youtube.similar.freshWeight", 50) / 100.0;
             List<java.util.concurrent.Future<List<Item>>> finds = new ArrayList<>();
-            for (final String q : queries) finds.add(pool.submit(new java.util.concurrent.Callable<List<Item>>() {
-                @Override
-                public List<Item> call() throws IOException {
-                    return webSearch(q, mix.snippets);
-                }
-            }));
+            for (int i = 0; i < queries.size() && i < nSearch; i++) {
+                final String q = queries.get(i);
+                finds.add(pool.submit(new java.util.concurrent.Callable<List<Item>>() {
+                    @Override
+                    public List<Item> call() throws IOException {
+                        return webSearch(q, mix.snippets, null);
+                    }
+                }));
+            }
+            List<java.util.concurrent.Future<List<Item>>> freshFinds = new ArrayList<>();
+            for (int i = 0; i < queries.size() && i < nFresh; i++) {
+                final String q = queries.get(i);
+                freshFinds.add(pool.submit(new java.util.concurrent.Callable<List<Item>>() {
+                    @Override
+                    public List<Item> call() throws IOException {
+                        return webSearch(q, mix.snippets, freshParams);
+                    }
+                }));
+            }
             // the first rows, while the second round loads (the page also lists the channels that need a picture)
             if (progress != null) progress.partial(mix.page(false));
             long tFirst = android.os.SystemClock.uptimeMillis() - t0;
@@ -742,6 +1169,16 @@ final class YouTubeSource extends Source {
                     Log.w(TAG, "more like: a search failed: " + e.getMessage());
                 }
             }
+            int freshFound = 0;
+            for (java.util.concurrent.Future<List<Item>> f : freshFinds) {
+                try {
+                    List<Item> l = await(f, until);
+                    mix.addFresh(l, freshW);
+                    freshFound++;
+                } catch (IOException e) {
+                    Log.w(TAG, "more like: a fresh search failed: " + e.getMessage());
+                }
+            }
             long tFinds = android.os.SystemClock.uptimeMillis() - t0;
             int looked = 0;
             for (java.util.concurrent.Future<WebRelated> f : looks) {
@@ -756,9 +1193,11 @@ final class YouTubeSource extends Source {
             long tPage0 = android.os.SystemClock.uptimeMillis();
             Item.Page page = mix.page(true);
             long tPage = android.os.SystemClock.uptimeMillis() - tPage0;
+            saveLeads(it.id, mix.leads);
             Log.i(TAG, "more like " + it.id + ": tv " + (tv == null ? "-" : tv.size()) + ", web "
                     + (web == null ? "-" : web.items.size()) + " in " + (t1 - t0) + " ms, first rows at " + tFirst + " ms; " + got + "/" + seeds.size()
-                    + " second lists by " + tHops + " ms; " + found + "/" + queries.size() + " searches by " + tFinds + " ms; " + looked + "/" + looks.size()
+                    + " second lists by " + tHops + " ms; " + found + "/" + Math.min(nSearch, queries.size()) + " searches, " + freshFound + "/"
+                    + freshFinds.size() + " fresh by " + tFinds + " ms; " + looked + "/" + looks.size()
                     + " pictures looked up; " + mix.summary + " (ranked in " + tPage + " ms) in " + (android.os.SystemClock.uptimeMillis() - t0) + " ms");
             if (mix.descriptor != null) Log.i(TAG, "more like " + it.id + ": descriptor in " + tMeta + " ms: "
                     + mix.descriptor.summary(12) + "; searches " + queries + "; top " + mix.top);
@@ -804,7 +1243,12 @@ final class YouTubeSource extends Source {
         final String srcId, srcName, srcKey;
         final List<HiddenChannels.Entry> hidden;
         final Similar sim;
-        final Descriptor.Weights weights = new Descriptor.Weights();
+        final Descriptor.Weights weights = descriptorWeights();
+        final Fresh.Tune tune = homeTune();
+        /** Channel keys that led the previous More like this for this video. */
+        final Set<String> shown;
+        /** Channel keys leading the page just built, saved for the next visit. */
+        final List<String> leads = new ArrayList<>();
         /** What the video says it is about (null: not known, the lists alone rank). */
         Descriptor descriptor;
         /** Search snippets by video id (searches only). */
@@ -823,23 +1267,14 @@ final class YouTubeSource extends Source {
         final Map<String, String> needAvatar = new java.util.LinkedHashMap<>();
         String summary = "";
 
-        Mix(Item of, String srcId, String srcName, List<HiddenChannels.Entry> hidden) {
+        Mix(Item of, String srcId, String srcName, List<HiddenChannels.Entry> hidden, Set<String> shown) {
             this.of = of;
             this.srcId = srcId;
             this.srcName = srcName;
             this.srcKey = srcName.toLowerCase(java.util.Locale.ROOT).trim();
             this.hidden = hidden;
-            weights.tag = Config.d("youtube.similar.descriptor.tag", weights.tag);
-            weights.hashtag = Config.d("youtube.similar.descriptor.hashtag", weights.hashtag);
-            weights.topic = Config.d("youtube.similar.descriptor.topic", weights.topic);
-            weights.title = Config.d("youtube.similar.descriptor.title", weights.title);
-            weights.chapter = Config.d("youtube.similar.descriptor.chapter", weights.chapter);
-            weights.description = Config.d("youtube.similar.descriptor.description", weights.description);
-            weights.category = Config.d("youtube.similar.descriptor.category", weights.category);
-            weights.phrase = Config.d("youtube.similar.descriptor.phrase", weights.phrase);
-            weights.idfFloor = Config.d("youtube.similar.descriptor.idfFloor", weights.idfFloor);
-            weights.searchFit = Config.d("youtube.similar.descriptor.searchFit", weights.searchFit);
-            weights.terms = Config.i("youtube.similar.descriptor.terms", weights.terms);
+            this.shown = shown == null ? new HashSet<String>() : shown;
+            tune.haveMatch = false;
             this.sim = new Similar(new Similar.Key() {
                 @Override
                 public String of(Item x) {
@@ -885,6 +1320,18 @@ final class YouTubeSource extends Source {
             for (Item x : list) if (x.channel != null) avatar(x.channel.id, x.channel.image);
         }
 
+        /**
+         * A "this month" search: recent videos, often from small channels. They keep a full descriptor fit (the
+         * upload filter already narrowed them; a miss still scores low) instead of the half fit of a broad search.
+         */
+        void addFresh(List<Item> list, double w) {
+            addFound(list, w);
+            for (Item x : list) {
+                String k = sim.keyOf(x);
+                if (k != null) related.add(k);
+            }
+        }
+
         void describe(Descriptor d) {
             if (!d.isEmpty()) descriptor = d;
         }
@@ -895,12 +1342,16 @@ final class YouTubeSource extends Source {
             return descriptor.queries(n, descriptor.scorer(sim.ranked(), snippets, weights));
         }
 
-        /** The channels by list score, blended with their fit to the descriptor when there is one. */
+        /** The channels by list score, blended with their fit to the descriptor when there is one, then freshness. */
         List<Similar.Group> ranked() {
             List<Similar.Group> all = sim.ranked();
-            if (descriptor == null) return all;
-            return sim.ranked(descriptor.fit(all, snippets, related, weights),
-                    Config.d("youtube.similar.descriptor.fitWeight", 2), Config.d("youtube.similar.descriptor.miss", 0.6));
+            if (descriptor != null) {
+                all = sim.ranked(descriptor.fit(all, snippets, related, weights),
+                        Config.d("youtube.similar.descriptor.fitWeight", 2), Config.d("youtube.similar.descriptor.miss", 0.6));
+            }
+            tune.haveMatch = descriptor != null;
+            Fresh.tune(all, shown, tune);
+            return all;
         }
 
         void avatar(String cid, String url) {
@@ -962,6 +1413,7 @@ final class YouTubeSource extends Source {
             List<List<Item>> rest = new ArrayList<>();
             int newChannels = 0;
             needAvatar.clear();
+            leads.clear();
             int maxLead = Config.i("youtube.similar.channels", 30), maxOwn = Config.i("youtube.similar.ownVideos", 6);
             StringBuilder topLog = new StringBuilder();
             for (Similar.Group g : ranked()) {
@@ -976,6 +1428,7 @@ final class YouTubeSource extends Source {
                     continue;
                 }
                 newChannels++;
+                if (leads.size() < 8) leads.add(g.key);
                 if (newChannels <= 10) topLog.append(newChannels > 1 ? ", " : "").append(g.key)
                         .append(String.format(java.util.Locale.ROOT, " %.2f/%.2f", g.score, g.match));
                 lead.add(g.items.get(0));
@@ -1199,15 +1652,18 @@ final class YouTubeSource extends Source {
 
     /**
      * A web search for videos (signed out, as the web page searches): each video with its channel, and its
-     * description snippet in {@code snippets}.
+     * description snippet in {@code snippets}. {@code filter} null is the Videos filter; a value such as the
+     * "This month" filter restricts uploads.
      */
-    private List<Item> webSearch(String query, Map<String, String> snippets) throws IOException {
+    private List<Item> webSearch(String query, Map<String, String> snippets, String filter) throws IOException {
         final List<Item> out = new ArrayList<>();
         final Map<String, String> sn = snippets;
         try {
             JSONObject client = new JSONObject().put("clientName", "WEB").put("clientVersion", WEB_VERSION).put("hl", "en").put("gl", "US");
             // params: videos only (the search page's "Videos" filter)
-            JSONObject body = new JSONObject().put("query", query).put("params", "EgIQAQ%3D%3D")
+            String params = filter == null || filter.isEmpty()
+                    ? Config.s("youtube.similar.videoParams", "EgIQAQ%3D%3D") : filter;
+            JSONObject body = new JSONObject().put("query", query).put("params", params)
                     .put("context", new JSONObject().put("client", client));
             Map<String, String> h = new HashMap<>();
             h.put("User-Agent", Http.DESKTOP_UA);
@@ -2244,6 +2700,128 @@ final class YouTubeSource extends Source {
     @Override
     public void refreshSession() throws IOException {
         if (accessToken() != null && prefs.getString("avatar", "").isEmpty()) fetchAccountName();
+    }
+
+    private static final java.util.concurrent.ExecutorService WATCH_IO = java.util.concurrent.Executors.newSingleThreadExecutor(new java.util.concurrent.ThreadFactory() {
+        @Override
+        public Thread newThread(Runnable r) {
+            Thread t = new Thread(r, "ctv-yt-watch");
+            t.setDaemon(true);
+            return t;
+        }
+    });
+    private static final java.util.concurrent.atomic.AtomicBoolean WATCH_BUSY = new java.util.concurrent.atomic.AtomicBoolean();
+    /** Watch-time URL per video, from the signed-in player answer. A miss is not cached. */
+    private static final Map<String, String> WATCH_URL = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<String, String>(32, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, String> e) {
+            return size() > 24;
+        }
+    });
+    /** When a watch-time report for a video may be tried again, after a failure. */
+    private static final Map<String, Long> WATCH_FAIL = java.util.Collections.synchronizedMap(new HashMap<String, Long>());
+
+    /**
+     * Remembers a real watch (finished titles leave Continue watching, so this is what Home expands next) and, when
+     * signed in, tells YouTube's own watch-time endpoint. The embed player is not the account, so without this the
+     * account's recommendations never move. Best effort, off the playback thread, and never retried in a loop.
+     */
+    @Override
+    public void noteWatch(Item it, long posMs, long durMs) {
+        if (!videoId(it) || it.kind != Item.VIDEO || posMs < 30_000) return;
+        rememberWatch(it);
+        if (!signedIn()) return;
+        final long end = posMs / 1000;
+        final long prev = prefs.getLong("wt_" + it.id, 0);
+        if (end < prev + 45) return;
+        Long fail = WATCH_FAIL.get(it.id);
+        if (fail != null && System.currentTimeMillis() < fail) return;
+        if (!WATCH_BUSY.compareAndSet(false, true)) return;
+        final Item item = it;
+        final long pos = posMs, dur = durMs, previous = prev;
+        WATCH_IO.execute(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    reportWatch(item, pos, dur, previous);
+                } finally {
+                    WATCH_BUSY.set(false);
+                }
+            }
+        });
+    }
+
+    private void reportWatch(Item it, long posMs, long durMs, long previous) {
+        try {
+            if (accessToken() == null) return;
+            String base = watchBase(it.id);
+            if (base == null || base.isEmpty()) {
+                WATCH_FAIL.put(it.id, System.currentTimeMillis() + 120_000);
+                return;
+            }
+            long end = posMs / 1000;
+            long len = durMs > 0 ? Math.max(end, durMs / 1000) : end;
+            StringBuilder u = new StringBuilder(base);
+            if (u.indexOf("cpn=") < 0) u.append(u.indexOf("?") < 0 ? '?' : '&').append("cpn=").append(cpn());
+            u.append("&cmt=").append(end).append("&rt=").append(Math.max(end, 1))
+                    .append("&st=").append(Math.max(0, previous)).append("&et=").append(end)
+                    .append("&len=").append(len).append("&state=playing&volume=100&muted=0");
+            Map<String, String> h = new HashMap<>();
+            h.put("User-Agent", Http.TV_UA);
+            h.put("Origin", "https://www.youtube.com");
+            h.put("Referer", "https://www.youtube.com/tv");
+            String token = accessToken();
+            if (token == null) return;
+            h.put("Authorization", "Bearer " + token);
+            try (Http.Response r = Http.open(u.toString(), h, null, null, true)) {
+                prefs.edit().putLong("wt_" + it.id, end).apply();
+                Log.i(TAG, "watchtime " + it.id + " to " + end + "s: HTTP " + r.code);
+            }
+        } catch (Http.Error e) {
+            WATCH_FAIL.put(it.id, System.currentTimeMillis() + 120_000);
+            Log.w(TAG, "watchtime " + it.id + ": HTTP " + e.code);
+        } catch (IOException e) {
+            WATCH_FAIL.put(it.id, System.currentTimeMillis() + 120_000);
+            Log.w(TAG, "watchtime " + it.id + " failed");
+        }
+    }
+
+    /** The signed-in player answer's watch-time URL for this video, or null. The URL itself is never logged. */
+    private String watchBase(String videoId) throws IOException {
+        String cached = WATCH_URL.get(videoId);
+        if (cached != null) return cached;
+        final String[] url = {""};
+        JSONObject extra = new JSONObject();
+        try {
+            extra.put("videoId", videoId).put("contentCheckOk", true).put("racyCheckOk", true);
+        } catch (JSONException e) {
+            throw new IOException(e);
+        }
+        Set<String> cap = new HashSet<>(Arrays.asList("videostatsWatchtimeUrl"));
+        Set<String> skip = new HashSet<>(Arrays.asList("streamingData", "playerConfig", "storyboards", "captions",
+                "annotations", "attestation", "adPlacements", "playerAds", "endscreen", "thumbnail", "thumbnails",
+                "responseContext", "frameworkUpdates"));
+        try (Http.Response r = call("player", tvContext(extra), true)) {
+            JsonReader jr = new JsonReader(new InputStreamReader(r.body, StandardCharsets.UTF_8));
+            JsonScan.scan(jr, cap, NONE, skip, new JsonScan.Sink() {
+                @Override
+                public void onValue(String key, String name, JSONObject v) {
+                    String u = v.optString("baseUrl", "");
+                    if (!u.isEmpty() && url[0].isEmpty()) url[0] = u.startsWith("//") ? "https:" + u : u;
+                }
+            });
+        }
+        if (url[0].isEmpty()) return null;
+        WATCH_URL.put(videoId, url[0]);
+        return url[0];
+    }
+
+    private static String cpn() {
+        String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        StringBuilder b = new StringBuilder(16);
+        java.util.Random rnd = new java.util.Random();
+        for (int i = 0; i < 16; i++) b.append(alphabet.charAt(rnd.nextInt(alphabet.length())));
+        return b.toString();
     }
 
     /** The account's watch history (FEhistory), newest first. */

@@ -88,3 +88,7 @@ One row per id. Add new ids at the bottom.
 | theme store / Get themes | The public repo's `themes/` folder (`index.json`, theme files, previews), browsed in Themes > Get themes; downloads checked against the index's size and SHA-256 and the theme validator |
 | update source | `BuildConfig.UPDATE_URL`, the public repo's latest GitHub release; updates install only with the same signing certificate and a matching SHA-256 |
 | store index | `themes/index.json` (`cleartv-theme-index` version 1): id, name, author, version, description, file, size, sha256, preview, previewSize, previewSha256 per theme |
+| home refresh | YouTube Home reordering (`YouTubeSource.refreshHome`, `tv/Fresh`): videos already shown move back, a shown shelf rotates, and a New for you / New channels row is added from a this-month search |
+| fresh search | A YouTube video search limited to uploads from the past month (the search page's "This month" filter), used on YouTube Home and in More like this to surface smaller and newer channels |
+| watch-time report | A signed-in report of how far a YouTube video was played, sent to YouTube's own watch-time URL from the TV player so the account's recommendations can move |
+| picker preview | The miniature beside the theme list in Settings > Theme (`ThemePreview`). The name changes with the highlight; the picture updates 200 ms after the highlight rests. A version 2 theme is drawn once by `LayoutSnapshot` and reused while that theme object stays on the list |

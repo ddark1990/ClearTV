@@ -1,49 +1,170 @@
 package com.goomero.cleartv.theme;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RadialGradient;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.Typeface;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 
 import com.goomero.cleartv.Ui;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * A live miniature of the home screen drawn from any {@link Theme} (not the active one): background and backdrop,
  * header style, the home rows in the theme's order with banner or poster cards, a focused tile with the theme's ring,
- * radius and focus growth, and the text colours. Used by Settings > Theme while moving through the list.
+ * radius and focus growth, and the text colours. Used by Settings > Theme.
+ *
+ * <p>Moving the highlight does not rebuild the picture. A theme already drawn is shown again at once; a new one is
+ * drawn once the highlight has rested, so a fast pass down the list does not build a home on every key.
  */
 public final class ThemePreview extends View {
+    /** How long the highlight must rest before a new preview picture is built. */
+    private static final int SETTLE_MS = 200;
+    /** Version 2 pictures kept so moving back to a theme does not build it again. */
+    private static final int CACHE_MAX = 6;
     private static final String[] SERVICES = {"YOUTUBE", "PRIME VIDEO", "TUBI", "PLUTO TV"};
     private static final int[] BRANDS = {0xFFFF3B30, 0xFF1A98FF, 0xFFFFDF00, 0xFFFFF200, 0xFF0064FF};
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), stroke = new Paint(Paint.ANTI_ALIAS_FLAG),
             txt = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF r = new RectF();
-    private Theme theme = Theme.defaults();
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable settle = new Runnable() {
+        @Override
+        public void run() {
+            waiting = false;
+            if (requested != null) commit(requested);
+        }
+    };
+    /** Newest request, and the theme whose picture is actually on screen (unchanged while a settle is waiting). */
+    private Theme requested, theme;
+    private boolean waiting;
     private Typeface display, body;
+    private String displayName = "", bodyName = "";
+    private Bitmap snapshot;
+    private Theme snapFor;
+    /** Keyed by theme id plus the instance: the list's object is reused, a rebuilt document is drawn again. */
+    private final LinkedHashMap<String, Bitmap> cache = new LinkedHashMap<String, Bitmap>(8, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Bitmap> eldest) {
+            return size() > CACHE_MAX;
+        }
+    };
 
     public ThemePreview(Context c) {
         super(c);
         stroke.setStyle(Paint.Style.STROKE);
-        setTheme(Themes.active());
     }
 
-    private android.graphics.Bitmap snapshot;
-    private Theme snapFor;
-
+    /**
+     * Point the miniature at {@code t}. A picture already drawn for this same theme object is swapped in now;
+     * anything else waits until the highlight rests, then is built once.
+     */
     public void setTheme(Theme t) {
-        theme = t;
-        if (t.ui == null) snapshot = null;
-        else if (t != snapFor && getWidth() > 0) {
-            snapshot = com.goomero.cleartv.LayoutSnapshot.render(getContext(), t, getWidth());
-            snapFor = t;
+        if (t == null) return;
+        if (t == requested && (waiting || t == theme)) return;
+        requested = t;
+        handler.removeCallbacks(settle);
+        waiting = false;
+        if (t == theme && (t.ui == null || (snapshot != null && snapFor == t))) return;
+        if (t.ui != null) {
+            Bitmap hit = cache.get(cacheKey(t));
+            if (hit != null) {
+                showReady(t, hit);
+                return;
+            }
         }
-        display = Ui.face(getContext(), t.displayFont);
-        body = Ui.face(getContext(), t.bodyFont);
+        if (theme == null) {
+            commit(t);
+            return;
+        }
+        waiting = true;
+        handler.postDelayed(settle, SETTLE_MS);
+    }
+
+    private void commit(Theme t) {
+        waiting = false;
+        loadFonts(t);
+        theme = t;
+        if (t.ui == null) {
+            snapshot = null;
+            snapFor = null;
+            invalidate();
+            return;
+        }
+        Bitmap hit = cache.get(cacheKey(t));
+        if (hit != null) {
+            snapshot = hit;
+            snapFor = t;
+            invalidate();
+            return;
+        }
+        if (getWidth() <= 0) {
+            snapshot = null;
+            snapFor = null; // the first draw builds it, once this view has a size
+            invalidate();
+            return;
+        }
+        renderSnapshot(t);
         invalidate();
+    }
+
+    private void showReady(Theme t, Bitmap b) {
+        loadFonts(t);
+        theme = t;
+        snapshot = b;
+        snapFor = t;
+        invalidate();
+    }
+
+    /** Build this version 2 theme's home once. {@link #snapFor} is claimed first so a re-entrant draw cannot start another. */
+    private void renderSnapshot(Theme t) {
+        if (getWidth() <= 0) return;
+        snapFor = t;
+        snapshot = null;
+        Bitmap b = com.goomero.cleartv.LayoutSnapshot.render(getContext(), t, getWidth());
+        if (b != null) {
+            cache.put(cacheKey(t), b);
+            snapshot = b;
+        }
+    }
+
+    private static String cacheKey(Theme t) {
+        return t.id + "#" + System.identityHashCode(t);
+    }
+
+    private void loadFonts(Theme t) {
+        if (!t.displayFont.equals(displayName)) {
+            display = Ui.face(getContext(), t.displayFont);
+            displayName = t.displayFont;
+        }
+        if (!t.bodyFont.equals(bodyName)) {
+            body = Ui.face(getContext(), t.bodyFont);
+            bodyName = t.bodyFont;
+        }
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        if (requested != null && requested != theme && !waiting) {
+            waiting = true;
+            handler.postDelayed(settle, SETTLE_MS);
+        }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        handler.removeCallbacks(settle);
+        waiting = false;
+        super.onDetachedFromWindow();
     }
 
     @Override
@@ -53,19 +174,32 @@ public final class ThemePreview extends View {
     }
 
     @Override
+    protected void onSizeChanged(int w, int h, int oldW, int oldH) {
+        super.onSizeChanged(w, h, oldW, oldH);
+        if (oldW > 0 && w > 0 && w != oldW) {
+            cache.clear();
+            snapshot = null;
+            snapFor = null;
+            if (theme != null && theme.ui != null && theme == requested && !waiting) invalidate();
+        }
+    }
+
+    @Override
     protected void onDraw(Canvas cv) {
         Theme t = theme;
         float w = getWidth(), h = getHeight();
+        if (t == null || w <= 0 || h <= 0) return;
         if (t.ui != null) {
-            // version 2: the real composed home, drawn small
-            if (snapFor != t || snapshot == null) {
-                snapshot = com.goomero.cleartv.LayoutSnapshot.render(getContext(), t, getWidth());
-                snapFor = t;
-            }
-            if (snapshot != null) {
+            // version 2: the real composed home, drawn small. Never built from a key that has already moved on.
+            if (snapFor != t && t == requested && !waiting) renderSnapshot(t);
+            if (snapshot != null && snapFor == t) {
                 cv.drawBitmap(snapshot, 0, 0, null);
                 return;
             }
+            fill.setShader(null);
+            fill.setColor(t.background);
+            cv.drawRect(0, 0, w, h, fill);
+            return;
         }
         float u = w / 960f; // one home-screen dp at this size
         r.set(0, 0, w, h);

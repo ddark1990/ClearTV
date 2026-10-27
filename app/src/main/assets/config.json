@@ -1,7 +1,7 @@
 {
  "schema": 1,
- "version": 4,
- "published": "2026-10-25T04:00:00Z",
+ "version": 5,
+ "published": "2026-10-27T02:30:00Z",
  "notes": "ClearTV service adapter config, built into the app. Changes ship as a new app version.",
  "youtube": {
   "api": "https://www.youtube.com/youtubei/v1/",
@@ -62,6 +62,15 @@
    "search": "news",
    "video": "jNQXAC9e7gk"
   },
+  "home": {
+   "continuations": 2,
+   "continuationMs": 2000,
+   "seeds": 2,
+   "freshMs": 2800,
+   "channels": 12,
+   "seen": 240,
+   "freshParams": "EgQIBBAB"
+  },
   "similar": {
    "seeds": 4,
    "channels": 30,
@@ -75,6 +84,18 @@
    "avatarLookups": 20,
    "searches": 2,
    "searchWeight": 30,
+   "videoParams": "EgIQAQ%3D%3D",
+   "freshSearches": 1,
+   "freshParams": "EgQIBBAB",
+   "freshWeight": 50,
+   "freshBoost": 1,
+   "freshMinMatch": 0.22,
+   "repeatPenalty": 0.8,
+   "recentDays": 14,
+   "monthDays": 45,
+   "modestViews": 20000,
+   "midViews": 150000,
+   "megaViews": 2000000,
    "descriptor": {
     "tag": 3,
     "hashtag": 3,
